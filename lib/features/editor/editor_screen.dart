@@ -19,10 +19,13 @@ import '../../core/widgets/pill_chip.dart';
 import '../../core/widgets/sm_toast.dart';
 import '../../core/widgets/tool_tab.dart';
 import '../home/project_repository.dart';
+import '../segmentation/alpha_mask.dart';
+import '../segmentation/mask_brush.dart';
 import '../segmentation/mask_processing.dart';
 import '../segmentation/mask_store.dart';
 import '../segmentation/segmentation_engine.dart';
 import '../segmentation/segmentation_registry.dart';
+import 'mask_mapper.dart';
 import 'services/image_import.dart';
 import 'state/editor_controller.dart';
 import 'state/editor_state.dart';
@@ -51,6 +54,14 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   bool _softEdges = true;
   double _brushSize = 40;
   bool _removingBg = false; // AI cut-out in progress
+
+  // Working mask cached across strokes of the Erase tool, so we don't reload
+  // and decode the mask file on every dab. Keyed by (layerId, maskPath) so an
+  // undo/redo or a layer switch transparently reloads.
+  AlphaMask? _workingMask;
+  String? _workingMaskLayerId;
+  String? _workingMaskPath;
+  Size? _workingImageSize;
 
   Timer? _saveTimer;
   StickerProject? _pendingSave;
@@ -157,6 +168,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                     EditorCanvas(
                       onEmptyTap: () => _pickPhoto(ImageSource.gallery),
                       dropPlaceholder: const DropPlaceholder(),
+                      onEraseStroke: _applyEraseStroke,
                     ),
                     if (_hasCutout(editor)) const _CutBadge(),
                     if (_removingBg) const _RemovingOverlay(),
@@ -546,6 +558,59 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       if (mounted) _toast("Couldn't remove the background — try again");
     } finally {
       if (mounted) setState(() => _removingBg = false);
+    }
+  }
+
+  /// Applies an Erase/Restore brush stroke (points in 512-logical canvas units)
+  /// to the selected photo's alpha mask: map into mask pixels, paint, persist
+  /// and apply — undoable per stroke. A working mask is cached across dabs so we
+  /// don't decode the mask file every time; it reloads on a layer/mask change.
+  Future<void> _applyEraseStroke(List<Offset> pointsLogical) async {
+    final layer = ref.read(editorControllerProvider).selectedLayer;
+    if (layer is! ImageLayer) return;
+    try {
+      if (_workingMask == null ||
+          _workingImageSize == null ||
+          _workingMaskLayerId != layer.id ||
+          _workingMaskPath != layer.maskPath) {
+        final size = await MaskStore.decodeImageSize(layer.assetPath);
+        final mask = layer.maskPath != null
+            ? await ref.read(maskStoreProvider).load(layer.maskPath!)
+            : AlphaMask.filled(size.width.round(), size.height.round(), 255);
+        if (!mounted) return;
+        _workingImageSize = size;
+        _workingMask = mask;
+        _workingMaskLayerId = layer.id;
+        _workingMaskPath = layer.maskPath;
+      }
+      final mapper = MaskMapper(
+        imageSize: _workingImageSize!,
+        position: layer.transform.position,
+        layerScale: layer.transform.scale,
+        rotation: layer.transform.rotation,
+      );
+      final maskPoints = <Offset>[
+        for (final p in pointsLogical) ?mapper.canvasToMask(p),
+      ];
+      if (maskPoints.isEmpty) return;
+      final painted = MaskBrush.paint(
+        _workingMask!,
+        BrushStroke(
+          points: maskPoints,
+          radius: mapper.radiusToMask(_brushSize / 2),
+          erase: _eraseMode,
+          soft: _softEdges,
+        ),
+      );
+      _workingMask = painted;
+      final path = await ref
+          .read(maskStoreProvider)
+          .save(painted, id: layer.id);
+      if (!mounted) return;
+      _workingMaskPath = path;
+      _controller.setImageMask(layer.id, path);
+    } catch (_) {
+      if (mounted) _toast("Couldn't apply the brush");
     }
   }
 

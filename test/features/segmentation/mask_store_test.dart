@@ -46,4 +46,40 @@ void main() {
     expect(frame.image.width, 3);
     expect(frame.image.height, 3);
   });
+
+  test('save then load round-trips the mask coverage exactly', () async {
+    final tmp = Directory.systemTemp.createTempSync('sm_mask_rt_');
+    addTearDown(() {
+      try {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      } catch (_) {}
+    });
+
+    final mask = AlphaMask(
+      width: 4,
+      height: 2,
+      alpha: Uint8List.fromList([0, 32, 64, 96, 128, 160, 200, 255]),
+    );
+    final store = MaskStore(baseDir: tmp);
+    final loaded = await store.load(await store.save(mask, id: 'rt'));
+
+    expect(loaded.width, 4);
+    expect(loaded.height, 2);
+    expect(loaded.alpha, mask.alpha);
+  });
+
+  test('decodeImageSize reads dimensions without full decode work', () async {
+    final tmp = Directory.systemTemp.createTempSync('sm_mask_sz_');
+    addTearDown(() {
+      try {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      } catch (_) {}
+    });
+    final path = await MaskStore(
+      baseDir: tmp,
+    ).save(AlphaMask.filled(7, 5, 255));
+    final size = await MaskStore.decodeImageSize(path);
+    expect(size.width, 7);
+    expect(size.height, 5);
+  });
 }

@@ -21,6 +21,7 @@ class EditorCanvas extends ConsumerStatefulWidget {
     super.key,
     required this.onEmptyTap,
     required this.dropPlaceholder,
+    this.onEraseStroke,
   });
 
   /// Tapped when the canvas has no layers (kick off image import).
@@ -28,6 +29,10 @@ class EditorCanvas extends ConsumerStatefulWidget {
 
   /// Placeholder shown on an empty canvas.
   final Widget dropPlaceholder;
+
+  /// Called with a brush stroke (points in 512-logical canvas units) when the
+  /// Erase tool is active over the selected image layer.
+  final void Function(List<Offset> pointsLogical)? onEraseStroke;
 
   @override
   ConsumerState<EditorCanvas> createState() => _EditorCanvasState();
@@ -40,8 +45,15 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
   Offset? _startFocal;
   String? _gestureLayerId;
 
+  /// Non-null while a brush stroke is being drawn (Erase tool). Points are in
+  /// 512-logical canvas units.
+  List<Offset>? _strokePoints;
+
   EditorController get _controller =>
       ref.read(editorControllerProvider.notifier);
+
+  bool _isErasing(EditorState editor) =>
+      editor.tool == EditorTool.erase && editor.selectedLayer is ImageLayer;
 
   @override
   Widget build(BuildContext context) {
@@ -56,10 +68,7 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
           onTapUp: (d) => _onTap(d.localPosition / scale, editor),
           onScaleStart: (d) => _onScaleStart(d.localFocalPoint / scale, editor),
           onScaleUpdate: (d) => _onScaleUpdate(d, scale),
-          onScaleEnd: (_) {
-            _gestureLayerId = null;
-            _controller.endEdit();
-          },
+          onScaleEnd: (_) => _onScaleEnd(),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -79,6 +88,11 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
 
   // ------------------------------------------------------------ gestures
   void _onTap(Offset pointLogical, EditorState editor) {
+    // Erase tool: a tap lays down a single dab on the selected photo.
+    if (_isErasing(editor)) {
+      widget.onEraseStroke?.call([pointLogical]);
+      return;
+    }
     if (editor.layers.isEmpty) {
       widget.onEmptyTap();
       return;
@@ -87,6 +101,12 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
   }
 
   void _onScaleStart(Offset focalLogical, EditorState editor) {
+    // Erase tool: start collecting a brush stroke on the selected photo,
+    // instead of moving/scaling a layer.
+    if (_isErasing(editor)) {
+      _strokePoints = [focalLogical];
+      return;
+    }
     final target =
         _hitTest(editor.layers, focalLogical) ?? editor.selectedLayer;
     if (target == null) {
@@ -100,6 +120,10 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d, double scale) {
+    if (_strokePoints != null) {
+      _strokePoints!.add(d.localFocalPoint / scale);
+      return;
+    }
     final id = _gestureLayerId;
     final start = _startTransform;
     final startFocal = _startFocal;
@@ -114,6 +138,17 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
         rotation: start.rotation + d.rotation,
       ),
     );
+  }
+
+  void _onScaleEnd() {
+    final stroke = _strokePoints;
+    if (stroke != null) {
+      _strokePoints = null;
+      if (stroke.isNotEmpty) widget.onEraseStroke?.call(stroke);
+      return;
+    }
+    _gestureLayerId = null;
+    _controller.endEdit();
   }
 
   // ------------------------------------------------------------ hit-testing

@@ -41,6 +41,41 @@ class MaskStore {
     return dest;
   }
 
+  /// Loads a mask PNG back into an [AlphaMask] (reads its alpha channel).
+  Future<AlphaMask> load(String path) async =>
+      decodeAlpha(await File(path).readAsBytes());
+
+  /// Decodes mask PNG [bytes] into an [AlphaMask].
+  static Future<AlphaMask> decodeAlpha(Uint8List bytes) async {
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    final data = await image.toByteData();
+    final w = image.width;
+    final h = image.height;
+    image.dispose();
+    codec.dispose();
+    if (data == null) throw StateError('failed to decode mask PNG');
+    final rgba = data.buffer.asUint8List();
+    final alpha = Uint8List(w * h);
+    for (var i = 0; i < w * h; i++) {
+      alpha[i] = rgba[i * 4 + 3];
+    }
+    return AlphaMask(width: w, height: h, alpha: alpha);
+  }
+
+  /// Decodes just the pixel dimensions of the image at [path].
+  static Future<ui.Size> decodeImageSize(String path) async {
+    final bytes = await File(path).readAsBytes();
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    final size = ui.Size(image.width.toDouble(), image.height.toDouble());
+    image.dispose();
+    codec.dispose();
+    return size;
+  }
+
   /// Converts an [AlphaMask] to PNG bytes: opaque white pixels whose alpha is
   /// the mask coverage. Uses `dart:ui`, so it runs on-device / in the test
   /// engine (not in a bare Dart VM).
