@@ -90,17 +90,56 @@ flutter build apk --debug         # produces build/app/outputs/flutter-apk/app-d
 ### Android emulator (optional, no physical device)
 
 ```bash
-sdkmanager "system-images;android-34;google_apis;x86_64" "emulator"
-avdmanager create avd -n pixel -k "system-images;android-34;google_apis;x86_64" -d pixel_6
-flutter emulators --launch pixel
+sdkmanager "system-images;android-35;google_apis;x86_64" "emulator"
+avdmanager create avd -n sm_test -k "system-images;android-35;google_apis;x86_64" -d pixel_6
+flutter emulators --launch sm_test
 ```
+
+Hardware acceleration on Windows uses WHPX (Windows Hypervisor Platform); check it with
+`emulator -accel-check`. Boots take ~20–40s with acceleration.
+
+## Testing
+
+Three layers, fastest first:
+
+| Layer | Command | Runs on |
+|---|---|---|
+| Unit + widget | `flutter test --exclude-tags golden` | host (Dart VM) |
+| Golden | `flutter test --tags golden` | host — baselines are maintainer-generated, **excluded from CI** |
+| End-to-end (integration) | `tools\run_e2e.ps1` | a real device / emulator |
+
+### End-to-end (integration) tests
+
+`integration_test/app_test.dart` drives the **real app on a device**, the way a user would:
+it launches from `main`'s widget tree, walks the real router back stack, and exercises real
+on-device file IO (persistence). This is what unit/widget tests can't cover.
+
+```powershell
+# Boots the sm_test emulator (creating it if needed), runs the suite, tears it down.
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\run_e2e.ps1
+#   -KeepEmulator   leave the emulator running for a faster next run
+```
+
+Or manually against any attached device:
+
+```bash
+flutter test integration_test -d <device-id>   # `flutter devices` to list ids
+```
+
+**Renderer note:** debug builds disable Impeller (see `android/app/src/debug/AndroidManifest.xml`)
+so the app uses the Skia/OpenGLES renderer. The Android emulator's software Vulkan (SwiftShader)
+is unstable under Impeller and crashes the emulator's GPU process, which makes headless E2E runs
+impossible. **Release builds keep Impeller** for premium visual quality — only debug/test falls
+back to Skia.
 
 ## Quality gates
 
 ```bash
 dart format --set-exit-if-changed .
 flutter analyze
-flutter test
+flutter test --exclude-tags golden
 ```
 
 CI runs all three on every PR (see `.github/workflows/`). Match them locally before pushing.
+The E2E suite needs an emulator/device and is run via `tools\run_e2e.ps1` (not yet in CI —
+tracked for a future GitHub Actions Android-emulator job).
