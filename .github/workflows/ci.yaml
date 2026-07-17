@@ -42,7 +42,9 @@ jobs:
         run: flutter analyze
 
       - name: Run tests
-        run: flutter test
+        # Golden tests are excluded: Skia/font rendering differs across hosts,
+        # and baselines are generated on the maintainer's machine.
+        run: flutter test --exclude-tags golden
 
       - name: Build debug APK
         run: flutter build apk --debug

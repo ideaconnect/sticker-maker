@@ -1,0 +1,8 @@
+# Test configuration.
+tags:
+  golden:
+    # Pixel golden tests. Excluded from CI (`flutter test --exclude-tags golden`)
+    # because Skia anti-aliasing / font rendering differs across host platforms;
+    # baselines are generated on the maintainer's machine. Run/update locally
+    # with: flutter test --tags golden --update-goldens
+    description: "Pixel golden tests (run locally, not in CI)."
