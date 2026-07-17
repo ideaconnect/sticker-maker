@@ -747,6 +747,22 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     }
   }
 
+  /// Pastes an image from the clipboard as a new image layer.
+  Future<void> _pastePhoto() async {
+    final service = ref.read(imageImportServiceProvider);
+    try {
+      final path = await service.pasteFromClipboard();
+      if (path == null) {
+        if (mounted) _toast('No image in clipboard');
+        return;
+      }
+      _controller.addImageLayer(assetPath: path);
+      _controller.setTool(EditorTool.adjust);
+    } catch (_) {
+      if (mounted) _toast('Could not paste image');
+    }
+  }
+
   /// Bottom sheet to add a layer: a photo (camera / gallery) or text.
   Future<void> _showAddMenu() async {
     final choice = await showModalBottomSheet<String>(
@@ -771,6 +787,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
               'Choose photo',
               'gallery',
             ),
+            _sheetTile(ctx, Icons.content_paste, 'Paste image', 'paste'),
             _sheetTile(ctx, Icons.title, 'Add text', 'text'),
             const SizedBox(height: 8),
           ],
@@ -782,6 +799,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         await _pickPhoto(ImageSource.camera);
       case 'gallery':
         await _pickPhoto(ImageSource.gallery);
+      case 'paste':
+        await _pastePhoto();
       case 'text':
         _controller.addTextLayer();
     }
