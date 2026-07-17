@@ -314,6 +314,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "17.3.0"
+  google_mlkit_commons:
+    dependency: transitive
+    description:
+      name: google_mlkit_commons
+      sha256: c7fc384bdb66c3b83e24e3a41818e61d7a378d900f65f5e775344fbca95a0917
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.12.0"
+  google_mlkit_subject_segmentation:
+    dependency: "direct main"
+    description:
+      name: google_mlkit_subject_segmentation
+      sha256: db813d9efe235491f8f062ca73a458bb3a353dcd4b4a20840f617db4d23571ea
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
   hooks:
     dependency: transitive
     description:

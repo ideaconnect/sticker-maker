@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'engines/mlkit_segmentation_engine.dart';
 import 'segmentation_engine.dart';
 
 /// Ordered set of [SegmentationEngine]s, highest priority first. Resolves the
@@ -42,10 +43,20 @@ class SegmentationRegistry {
   }
 }
 
-/// The app's segmentation registry. Engines are appended as they land:
-/// ML Kit (#26, Android) and the bundled fallback (#28) — for now the set is
-/// empty, so [SegmentationRegistry.resolve] returns null and the Cut-out UX
-/// shows its "unavailable" state.
-final segmentationRegistryProvider = Provider<SegmentationRegistry>(
-  (ref) => const SegmentationRegistry([]),
-);
+/// The app's segmentation registry, highest-priority engine first:
+///
+///  1. The platform's system engine — ML Kit on Android (#26); Apple Vision on
+///     iOS arrives in #58.
+///  2. The bundled Apache-2.0 fallback model (#28) — appended once it lands, so
+///     devices without Play services still cut out.
+///
+/// Until the fallback exists, a non-Android device (or an Android device with
+/// no Play services) resolves to no engine and the Cut-out UX shows its
+/// "unavailable" state.
+final segmentationRegistryProvider = Provider<SegmentationRegistry>((ref) {
+  return SegmentationRegistry([
+    if (defaultTargetPlatform == TargetPlatform.android)
+      MlKitSegmentationEngine(),
+    // BundledSegmentationEngine() — added in #28.
+  ]);
+});
