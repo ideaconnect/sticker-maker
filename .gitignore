@@ -1,0 +1,22 @@
+# OS
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Flutter/Dart (scaffold in M0 will extend this)
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Secrets / signing
+*.keystore
+*.jks
+key.properties
+.env

@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka:wght@400;500;600;700&family=Luckiest+Guy&family=Pacifico&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Rubik:wght@400;700&display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#0c0a11}
+  a{color:#a78bfa}a:hover{color:#c4b5fd}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes popin{0%{transform:translate(-50%,8px);opacity:0}100%{transform:translate(-50%,0);opacity:1}}
+  @keyframes dashmove{to{stroke-dashoffset:-16}}
+  input[type=range]{-webkit-appearance:none;appearance:none;background:transparent}
+  input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:5px;background:rgba(255,255,255,.12)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;margin-top:-6.5px;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+  ::-webkit-scrollbar{width:0;height:0}
+</style>
+</helmet>
+<x-import component-from-global-scope="AndroidDevice" from="./android-frame.jsx" dark="{{ true }}" hint-size="412px,892px">
+<div style="height:100%;background:#131019;color:#efeaf4;font-family:'Plus Jakarta Sans',system-ui,sans-serif;position:relative;overflow:hidden;display:flex;flex-direction:column">
+
+<!-- ============ HOME ============ -->
+<sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+<div style="height:100%;display:flex;flex-direction:column;overflow-y:auto">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px 8px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#a78bfa,#f472b6);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px rgba(167,139,250,.4)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.2L19 10l-5.1 1.8L12 17l-1.9-5.2L5 10l5.1-1.8z"/></svg>
+      </div>
+      <div>
+        <div style="font-family:Fredoka,sans-serif;font-weight:700;font-size:20px;line-height:1">Sticker Maker</div>
+        <div style="font-size:11px;color:#8b8399;margin-top:2px">Make it stick.</div>
+      </div>
+    </div>
+    <div style="width:38px;height:38px;border-radius:50%;background:#2a2436;border:1.5px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-weight:700;color:#c4b5fd">D</div>
+  </div>
+
+  <div style="padding:12px 20px 4px">
+    <button onClick="{{ goEditor }}" style="width:100%;border:none;cursor:pointer;border-radius:22px;padding:22px;background:linear-gradient(135deg,#7c5cff 0%,#b06bff 45%,#f472b6 100%);color:#fff;text-align:left;display:flex;align-items:center;gap:16px;box-shadow:0 12px 30px rgba(124,92,255,.35);font-family:inherit">
+      <div style="width:52px;height:52px;border-radius:16px;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;flex:0 0 auto">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </div>
+      <div>
+        <div style="font-family:Fredoka,sans-serif;font-weight:600;font-size:19px">New Sticker</div>
+        <div style="font-size:12.5px;opacity:.85;margin-top:2px">Start from a photo of your pet</div>
+      </div>
+    </button>
+  </div>
+
+  <div style="display:flex;gap:10px;padding:14px 20px 6px">
+    <sc-for list="{{ quickstart }}" as="q" hint-placeholder-count="3">
+    <button onClick="{{ q.onClick }}" style="{{ q.style }}">
+      <div style="{{ q.iconWrap }}"><span style="{{ q.glyph }}">{{ q.icon }}</span></div>
+      <span style="font-size:11.5px;font-weight:600;color:#cfc9db">{{ q.label }}</span>
+    </button>
+    </sc-for>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 10px">
+    <span style="font-family:Fredoka,sans-serif;font-weight:600;font-size:15px">Recent stickers</span>
+    <span style="font-size:12px;color:#8b8399">See all</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 20px 28px">
+    <sc-for list="{{ projects }}" as="p" hint-placeholder-count="4">
+    <button onClick="{{ p.onOpen }}" style="border:none;cursor:pointer;padding:0;background:#1c1826;border-radius:18px;overflow:hidden;text-align:left;border:1px solid rgba(255,255,255,.06)">
+      <div style="position:relative;aspect-ratio:1;background-color:#262130;background-image:linear-gradient(45deg,#2f2a3b 25%,transparent 0),linear-gradient(-45deg,#2f2a3b 25%,transparent 0),linear-gradient(45deg,transparent 75%,#2f2a3b 0),linear-gradient(-45deg,transparent 75%,#2f2a3b 0);background-size:18px 18px;background-position:0 0,0 9px,9px -9px,-9px 0;display:flex;align-items:center;justify-content:center">
+        <div style="{{ p.blob }}"></div>
+        <div style="{{ p.badge }}">{{ p.kind }}</div>
+      </div>
+      <div style="padding:9px 12px 11px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;font-weight:600;color:#e7e2f0">{{ p.name }}</span>
+        <span style="font-size:11px;color:#8b8399">{{ p.count }}</span>
+      </div>
+    </button>
+    </sc-for>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ EDITOR ============ -->
+<sc-if value="{{ isEditor }}">
+<div style="height:100%;display:flex;flex-direction:column">
+  <!-- top bar -->
+  <div style="display:flex;align-items:center;gap:6px;padding:10px 12px;flex:0 0 auto">
+    <button onClick="{{ goHome }}" style="width:40px;height:40px;border:none;background:transparent;color:#cfc9db;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:12px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div style="flex:1;min-width:0">
+      <div style="font-family:Fredoka,sans-serif;font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Rex woof</div>
+      <div style="font-size:10.5px;color:#8b8399">512 × 512 · transparent</div>
+    </div>
+    <button onClick="{{ onUndo }}" style="width:38px;height:38px;border:none;background:transparent;color:#8b8399;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:12px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a5 5 0 0 1 0 10h-1"/></svg>
+    </button>
+    <button onClick="{{ onRedo }}" style="width:38px;height:38px;border:none;background:transparent;color:#8b8399;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:12px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M15 7l5 5-5 5"/><path d="M20 12H10a5 5 0 0 0 0 10h1"/></svg>
+    </button>
+    <button onClick="{{ goExport }}" style="border:none;cursor:pointer;border-radius:14px;padding:9px 16px;background:linear-gradient(135deg,#7c5cff,#f472b6);color:#fff;font-family:inherit;font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;box-shadow:0 6px 16px rgba(124,92,255,.35)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+      Export
+    </button>
+  </div>
+
+  <!-- canvas -->
+  <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:8px 20px 14px;position:relative">
+    <div style="width:100%;max-width:320px;aspect-ratio:1;position:relative;border-radius:24px;overflow:hidden;background-color:#221d2e;background-image:linear-gradient(45deg,#2b2638 25%,transparent 0),linear-gradient(-45deg,#2b2638 25%,transparent 0),linear-gradient(45deg,transparent 75%,#2b2638 0),linear-gradient(-45deg,transparent 75%,#2b2638 0);background-size:26px 26px;background-position:0 0,0 13px,13px -13px,-13px 0;box-shadow:0 20px 50px rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.05)">
+      <div ref="{{ canvasRef }}" style="position:absolute;inset:0;overflow:hidden;transition:inset .35s,border-radius .35s">
+        <image-slot id="sm-subject" shape="rect" fit="cover" placeholder="Drop your pet photo"></image-slot>
+      </div>
+      <!-- sticker text overlay -->
+      <sc-if value="{{ hasText }}">
+        <div style="{{ textStyle }}">{{ textValue }}</div>
+      </sc-if>
+      <!-- selection frame -->
+      <sc-if value="{{ showHandles }}">
+        <div style="position:absolute;inset:14px;pointer-events:none">
+          <svg style="position:absolute;inset:0;width:100%;height:100%" fill="none"><rect x="1" y="1" width="99%" height="99%" rx="10" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="7 6" style="animation:dashmove 1s linear infinite"/></svg>
+          <div style="position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:3px;background:#38bdf8;box-shadow:0 0 0 2px #131019"></div>
+          <div style="position:absolute;right:-6px;top:-6px;width:12px;height:12px;border-radius:3px;background:#38bdf8;box-shadow:0 0 0 2px #131019"></div>
+          <div style="position:absolute;left:-6px;bottom:-6px;width:12px;height:12px;border-radius:3px;background:#38bdf8;box-shadow:0 0 0 2px #131019"></div>
+          <div style="position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;border-radius:3px;background:#38bdf8;box-shadow:0 0 0 2px #131019"></div>
+          <div style="position:absolute;left:50%;top:-30px;transform:translateX(-50%);width:2px;height:24px;background:#38bdf8"></div>
+          <div style="position:absolute;left:50%;top:-38px;transform:translateX(-50%);width:14px;height:14px;border-radius:50%;background:#131019;border:2px solid #38bdf8;display:flex;align-items:center;justify-content:center"></div>
+        </div>
+      </sc-if>
+      <!-- bg removed badge -->
+      <sc-if value="{{ bgRemoved }}">
+        <div style="position:absolute;top:12px;left:12px;background:rgba(52,211,153,.2);border:1px solid rgba(52,211,153,.5);color:#6ee7b7;font-size:11px;font-weight:700;padding:5px 10px;border-radius:20px;display:flex;align-items:center;gap:5px;backdrop-filter:blur(6px)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>Cut out
+        </div>
+      </sc-if>
+      <!-- frame badge -->
+      <sc-if value="{{ toolFrames }}">
+        <div style="position:absolute;bottom:12px;right:12px;background:rgba(19,16,25,.7);color:#fb923c;font-size:11px;font-weight:700;padding:5px 10px;border-radius:20px;backdrop-filter:blur(6px)">{{ frameLabel }}</div>
+      </sc-if>
+      <!-- processing overlay -->
+      <sc-if value="{{ processing }}">
+        <div style="position:absolute;inset:0;background:rgba(12,10,17,.72);backdrop-filter:blur(3px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px">
+          <div style="width:44px;height:44px;border-radius:50%;border:3px solid rgba(52,211,153,.25);border-top-color:#34d399;animation:spin .8s linear infinite"></div>
+          <div style="font-size:13px;font-weight:600;color:#d6f5e6">Removing background…</div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <!-- contextual panel -->
+  <div style="flex:0 0 auto;background:#1a1624;border-top:1px solid rgba(255,255,255,.06);border-radius:22px 22px 0 0;padding:16px 18px 12px;max-height:300px;overflow-y:auto">
+
+    <!-- ADJUST -->
+    <sc-if value="{{ toolAdjust }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span style="font-family:Fredoka,sans-serif;font-weight:600;font-size:15px;color:#38bdf8">Adjust</span>
+        <button onClick="{{ resetAdjust }}" style="border:none;background:rgba(255,255,255,.06);color:#b7b0c6;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px">Reset</button>
+      </div>
+      <sc-for list="{{ sliders }}" as="sl" hint-placeholder-count="5">
+        <div style="margin-bottom:11px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+            <span style="font-size:12.5px;color:#cfc9db;font-weight:600">{{ sl.label }}</span>
+            <span style="{{ sl.valStyle }}">{{ sl.value }}{{ sl.unit }}</span>
+          </div>
+          <input type="range" min="{{ sl.min }}" max="{{ sl.max }}" value="{{ sl.value }}" onChange="{{ sl.onInput }}" style="{{ sl.trackStyle }}" />
+        </div>
+      </sc-for>
+    </sc-if>
+
+    <!-- LAYERS -->
+    <sc-if value="{{ toolLayers }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span style="font-family:Fredoka,sans-serif;font-weight:600;font-size:15px;color:#a78bfa">Layers</span>
+        <button onClick="{{ addLayer }}" style="border:none;background:rgba(167,139,250,.16);color:#c4b5fd;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;padding:6px 12px;border-radius:20px;display:flex;align-items:center;gap:5px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add
+        </button>
+      </div>
+      <sc-for list="{{ layers }}" as="ly" hint-placeholder-count="3">
+        <div onClick="{{ ly.onSelect }}" style="{{ ly.rowStyle }}">
+          <div style="{{ ly.thumb }}">
+            <sc-if value="{{ ly.isText }}"><span style="font-family:Bangers,sans-serif;font-size:16px;color:#fff">T</span></sc-if>
+            <sc-if value="{{ ly.isImage }}"><span style="{{ ly.thumbDot }}"></span></sc-if>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:#e7e2f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ly.name }}</div>
+            <div style="font-size:10.5px;color:#8b8399">{{ ly.type }}</div>
+          </div>
+          <button onClick="{{ ly.onToggle }}" style="{{ ly.eyeBtn }}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <div style="color:#5f596e;display:flex;flex-direction:column;gap:3px;padding-left:2px"><span style="width:16px;height:2px;background:currentColor;border-radius:2px"></span><span style="width:16px;height:2px;background:currentColor;border-radius:2px"></span></div>
+        </div>
+      </sc-for>
+    </sc-if>
+
+    <!-- TEXT -->
+    <sc-if value="{{ toolText }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span style="font-family:Fredoka,sans-serif;font-weight:600;font-size:15px;color:#f472b6">Text</span>
+        <span style="font-size:11px;color:#8b8399">Tap a font to preview</span>
+      </div>
+      <input type="text" value="{{ textValue }}" onChange="{{ onText }}" placeholder="Type your caption…" style="width:100%;border:1px solid rgba(255,255,255,.1);background:#242030;color:#efeaf4;border-radius:12px;padding:11px 13px;font-family:inherit;font-size:14px;outline:none;margin-bottom:12px" />
+      <div style="display:flex;gap:9px;overflow-x:auto;padding-bottom:10px;margin-bottom:8px">
+        <sc-for list="{{ fonts }}" as="f" hint-placeholder-count="5">
+          <button onClick="{{ f.onClick }}" style="{{ f.chipStyle }}"><span style="{{ f.nameStyle }}">{{ f.name }}</span></button>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:12.5px;color:#cfc9db;font-weight:600">Size</span>
+        <span style="font-size:12px;color:#8b8399;font-weight:600">{{ textSize }}px</span>
+      </div>
+      <input type="range" min="16" max="72" value="{{ textSize }}" onChange="{{ onTextSize }}" style="width:100%;accent-color:#f472b6;height:22px;margin-bottom:10px" />
+      <div style="display:flex;gap:9px;flex-wrap:wrap">
+        <sc-for list="{{ textColors }}" as="c" hint-placeholder-count="8">
+          <button onClick="{{ c.onClick }}" style="{{ c.swStyle }}"></button>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <!-- ERASE -->
+    <sc-if value="{{ toolErase }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <span style="font-family:Fredoka,sans-serif;font-weight:600;font-size:15px;color:#fbbf24">Manual erase</span>
+        <span style="font-size:11px;color:#8b8399">Brush over the canvas</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button onClick="{{ setEraseMode }}" style="{{ eraseTab.erase }}">Erase</button>
+        <button onClick="{{ setRestoreMode }}" style="{{ eraseTab.restore }}">Restore</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:12.5px;color:#cfc9db;font-weight:600">Brush size</span>
+        <span style="font-size:12px;color:#8b8399;font-weight:600">{{ eraseSize }}px</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
+        <input type="range" min="8" max="120" value="{{ eraseSize }}" onChange="{{ onEraseSize }}" style="flex:1;accent-color:#fbbf24;height:22px" />
+        <div style="{{ brushPreview }}"></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px">
+        <span style="font-size:12.5px;color:#cfc9db;font-weight:600">Soft edges</span>
+        <button onClick="{{ toggleSoft }}" style="{{ softToggle }}"><span style="{{ softKnob }}"></span></button>
+      </div>
+    </sc-if>
+
+    <!-- REMOVE BG -->
+    <sc-if value="{{ toolBg }}">
+      <div style="text-align:center;padding:2px 4px 6px">
+        <div style="font-family:Fredoka,sans-serif;font-weight:600;font-size:16px;color:#34d399;margin-bottom:4px">AI Background Removal</div>
+        <div style="font-size:12.5px;color:#9a94a8;line-height:1.5;margin-bottom:16px">One tap to isolate your pet. We'll auto-detect edges — refine anything by hand in the Erase tool.</div>
+        <button onClick="{{ removeBg }}" style="{{ bgBtnStyle }}">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.2L19 10l-5.1 1.8L12 17l-1.9-5.2L5 10l5.1-1.8z"/><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg>
+          {{ bgBtnLabel }}
+        </button>
+      </div>
+    </sc-if>
+
+    <!-- FRAMES -->
+    <sc-if value="{{ toolFrames }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span style="font-family:Fredoka,sans-serif;font-weight:600;font-size:15px;color:#fb923c">Animation frames</span>
+        <button onClick="{{ togglePlay }}" style="{{ playBtnStyle }}">
+          <sc-if value="{{ playing }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></sc-if>
+          <sc-if value="{{ paused }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></sc-if>
+          {{ playLabel }}
+        </button>
+      </div>
+      <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px">
+        <sc-for list="{{ frames }}" as="fr" hint-placeholder-count="3">
+          <button onClick="{{ fr.onClick }}" style="{{ fr.cellStyle }}">
+            <span style="{{ fr.num }}">{{ fr.index }}</span>
+          </button>
+        </sc-for>
+        <button onClick="{{ addFrame }}" style="flex:0 0 auto;width:64px;height:64px;border-radius:14px;border:2px dashed rgba(251,146,60,.4);background:transparent;color:#fb923c;cursor:pointer;display:flex;align-items:center;justify-content:center">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:12.5px;color:#cfc9db;font-weight:600">Speed</span>
+        <span style="font-size:12px;color:#8b8399;font-weight:600">{{ fps }} fps</span>
+      </div>
+      <input type="range" min="2" max="24" value="{{ fps }}" onChange="{{ onFps }}" style="width:100%;accent-color:#fb923c;height:22px" />
+    </sc-if>
+
+  </div>
+
+  <!-- bottom tool tabs -->
+  <div style="flex:0 0 auto;display:flex;gap:4px;padding:8px 8px 10px;background:#141019;border-top:1px solid rgba(255,255,255,.05);overflow-x:auto;justify-content:space-between">
+    <button onClick="{{ onLayers }}" style="{{ tb.layers }}">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>Layers
+    </button>
+    <button onClick="{{ onAdjust }}" style="{{ tb.adjust }}">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M17 7h3"/><circle cx="15" cy="7" r="2"/><path d="M4 17h3M11 17h9"/><circle cx="9" cy="17" r="2"/></svg>Adjust
+    </button>
+    <button onClick="{{ onText }}" style="{{ tb.text }}">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14M12 6v13"/></svg>Text
+    </button>
+    <button onClick="{{ onErase }}" style="{{ tb.erase }}">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4l5 5-9 9H6l-3-3z"/><path d="M8 21h13"/></svg>Erase
+    </button>
+    <button onClick="{{ onBg }}" style="{{ tb.bg }}">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.9L19 10l-5.2 1.7L12 17l-1.8-5.3L6 10l5.2-2z"/><path d="M18.5 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg>Cut out
+    </button>
+    <button onClick="{{ onFrames }}" style="{{ tb.frames }}">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v14M16 5v14M3 12h5M16 12h5"/></svg>Frames
+    </button>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============ EXPORT ============ -->
+<sc-if value="{{ isExport }}">
+<div style="height:100%;display:flex;flex-direction:column">
+  <div style="display:flex;align-items:center;gap:6px;padding:10px 12px;flex:0 0 auto">
+    <button onClick="{{ goEditor }}" style="width:40px;height:40px;border:none;background:transparent;color:#cfc9db;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:12px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div style="flex:1;font-family:Fredoka,sans-serif;font-weight:600;font-size:17px">Export sticker</div>
+    <button onClick="{{ goHome }}" style="width:40px;height:40px;border:none;background:transparent;color:#8b8399;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:12px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+
+  <div style="flex:1;min-height:0;overflow-y:auto;padding:4px 20px 20px">
+    <div style="display:flex;justify-content:center;margin:8px 0 18px">
+      <div style="width:170px;height:170px;border-radius:22px;overflow:hidden;position:relative;background-color:#221d2e;background-image:linear-gradient(45deg,#2b2638 25%,transparent 0),linear-gradient(-45deg,#2b2638 25%,transparent 0),linear-gradient(45deg,transparent 75%,#2b2638 0),linear-gradient(-45deg,transparent 75%,#2b2638 0);background-size:22px 22px;background-position:0 0,0 11px,11px -11px,-11px 0;box-shadow:0 16px 40px rgba(0,0,0,.5)">
+        <image-slot id="sm-subject-preview" shape="rect" fit="cover" placeholder="Preview"></image-slot>
+        <sc-if value="{{ hasText }}"><div style="{{ previewTextStyle }}">{{ textValue }}</div></sc-if>
+      </div>
+    </div>
+
+    <div style="display:flex;background:#221d2e;border-radius:14px;padding:4px;margin-bottom:20px">
+      <button onClick="{{ setStatic }}" style="{{ modeTab.static }}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="M20 15l-4-4-8 8"/></svg>Static
+      </button>
+      <button onClick="{{ setAnimated }}" style="{{ modeTab.animated }}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 5v14M16 5v14"/></svg>Animated
+      </button>
+    </div>
+
+    <div style="font-size:12.5px;font-weight:700;color:#8b8399;letter-spacing:.4px;text-transform:uppercase;margin-bottom:10px">Send to</div>
+    <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:18px">
+      <sc-for list="{{ targets }}" as="t" hint-placeholder-count="5">
+        <button onClick="{{ t.onClick }}" style="{{ t.cardStyle }}">
+          <div style="{{ t.iconWrap }}"><span style="{{ t.iconGlyph }}">{{ t.abbr }}</span></div>
+          <div style="flex:1;text-align:left">
+            <div style="font-size:14px;font-weight:700;color:#e7e2f0">{{ t.name }}</div>
+            <div style="font-size:11.5px;color:#8b8399">{{ t.sub }}</div>
+          </div>
+          <div style="{{ t.radio }}"><sc-if value="{{ t.selected }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg></sc-if></div>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;font-size:12.5px;color:#9a94a8;padding:0 4px 16px">
+      <span>{{ exportDims }}</span><span>{{ exportSize }}</span>
+    </div>
+
+    <button onClick="{{ doExport }}" style="{{ exportBtnStyle }}">
+      <sc-if value="{{ exporting }}"><span style="width:18px;height:18px;border-radius:50%;border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .7s linear infinite;display:inline-block"></span>Exporting…</sc-if>
+      <sc-if value="{{ notExporting }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>{{ exportCta }}</sc-if>
+    </button>
+  </div>
+</div>
+</sc-if>
+
+<!-- toast -->
+<sc-if value="{{ toast }}">
+  <div style="position:absolute;left:50%;bottom:26px;transform:translateX(-50%);background:#2a2436;color:#fff;padding:12px 20px;border-radius:30px;font-size:13px;font-weight:600;box-shadow:0 12px 30px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.1);white-space:nowrap;animation:popin .25s ease;z-index:50;display:flex;align-items:center;gap:8px">
+    <span style="width:8px;height:8px;border-radius:50%;background:#34d399;flex:0 0 auto"></span>{{ toast }}
+  </div>
+</sc-if>
+
+</div>
+</x-import>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;412px&quot;,&quot;height&quot;:&quot;892px&quot;}}">
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    this.canvasRef = React.createRef();
+    this.state = {
+      screen:'home', tool:'adjust',
+      brightness:104, contrast:108, saturation:118, hue:0, opacity:100,
+      bgRemoved:false, processing:false,
+      layers:[
+        {id:'txt', name:'Woof!', type:'Text layer', kind:'text'},
+        {id:'subj', name:'Rex (photo)', type:'Image layer', kind:'image', hue:'#a78bfa'},
+        {id:'bg', name:'Background', type:'Image layer', kind:'image', hue:'#38bdf8'},
+      ],
+      hidden:{},
+      selected:'subj',
+      hasText:true, textValue:'WOOF!', textFont:'Bangers', textColor:'#ffffff', textSize:40,
+      frames:[{id:1},{id:2},{id:3}], current:0, playing:false, fps:8,
+      eraseSize:40, eraseMode:'erase', soft:true,
+      exportMode:'animated', target:'telegram', exporting:false,
+      toast:null,
+    };
+  }
+  componentDidMount(){ this.applyFilter(); }
+  componentDidUpdate(){ this.applyFilter(); }
+  componentWillUnmount(){ clearInterval(this.timer); clearTimeout(this.tt); clearTimeout(this.pt); clearTimeout(this.et); }
+
+  applyFilter(){
+    const el = this.canvasRef.current; if(!el) return;
+    const s = this.state;
+    const hiddenSubj = s.hidden.subj;
+    let f = `brightness(${s.brightness}%) contrast(${s.contrast}%) saturate(${s.saturation}%) hue-rotate(${s.hue}deg)`;
+    if(s.bgRemoved) f += ' drop-shadow(0 10px 16px rgba(0,0,0,.5))';
+    el.style.filter = f;
+    el.style.opacity = hiddenSubj ? 0 : (s.opacity/100);
+    el.style.inset = s.bgRemoved ? '18px' : '0';
+    el.style.borderRadius = s.bgRemoved ? '20px' : '0';
+  }
+  hexA(h,a){ const n=parseInt(h.slice(1),16); return `rgba(${n>>16&255},${(n>>8)&255},${n&255},${a})`; }
+  showToast(m){ this.setState({toast:m}); clearTimeout(this.tt); this.tt=setTimeout(()=>this.setState({toast:null}),1900); }
+  setTool(t){ this.setState({tool:t}); }
+
+  tabStyle(id,color){
+    const a=this.state.tool===id;
+    return {flex:'1 1 0',minWidth:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:5,padding:'8px 2px',border:'none',borderRadius:15,cursor:'pointer',background:a?this.hexA(color,0.15):'transparent',color:a?color:'#7d7690',fontFamily:'"Plus Jakarta Sans",system-ui,sans-serif',fontSize:10.5,fontWeight:a?700:600,transition:'all .15s',WebkitTapHighlightColor:'transparent'};
+  }
+
+  removeBg(){
+    if(this.state.processing) return;
+    if(this.state.bgRemoved){ this.setState({bgRemoved:false}); this.showToast('Background restored'); return; }
+    this.setState({processing:true});
+    clearTimeout(this.pt);
+    this.pt=setTimeout(()=>{ this.setState({processing:false,bgRemoved:true}); this.showToast('Background removed'); },1700);
+  }
+
+  togglePlay(){
+    if(this.state.playing){ clearInterval(this.timer); this.setState({playing:false}); }
+    else {
+      this.setState({playing:true});
+      clearInterval(this.timer);
+      this.timer=setInterval(()=>this.setState(st=>({current:(st.current+1)%st.frames.length})),1000/this.state.fps);
+    }
+  }
+  setFps(v){
+    this.setState({fps:v});
+    if(this.state.playing){ clearInterval(this.timer); this.timer=setInterval(()=>this.setState(st=>({current:(st.current+1)%st.frames.length})),1000/v); }
+  }
+
+  doExport(){
+    if(this.state.exporting) return;
+    this.setState({exporting:true});
+    clearTimeout(this.et);
+    this.et=setTimeout(()=>{ this.setState({exporting:false}); const t=this.state.targets2||{}; this.showToast('Sticker exported'); },1800);
+  }
+
+  renderVals(){
+    const s=this.state;
+    const A={vio:'#a78bfa',cy:'#38bdf8',pk:'#f472b6',am:'#fbbf24',gr:'#34d399',or:'#fb923c'};
+
+    // sliders
+    const mk=(key,label,min,max,unit,color)=>({
+      key,label,unit,min,max,value:s[key],
+      trackStyle:{width:'100%',height:22,accentColor:color,cursor:'pointer'},
+      valStyle:{fontSize:12,fontWeight:700,color},
+      onInput:e=>this.setState({[key]:+e.target.value}),
+    });
+    const sliders=[
+      mk('brightness','Brightness',0,200,'%',A.am),
+      mk('contrast','Contrast',0,200,'%',A.cy),
+      mk('saturation','Saturation',0,200,'%',A.pk),
+      mk('hue','Hue',-180,180,'\u00b0',A.vio),
+      mk('opacity','Opacity',0,100,'%',A.gr),
+    ];
+
+    // layers
+    const layers=s.layers.map(l=>{
+      const sel=s.selected===l.id, vis=!s.hidden[l.id];
+      return {
+        ...l, isText:l.kind==='text', isImage:l.kind==='image',
+        rowStyle:{display:'flex',alignItems:'center',gap:11,padding:'8px 10px',marginBottom:7,borderRadius:14,cursor:'pointer',background:sel?this.hexA(A.vio,0.14):'#221d2e',border:sel?`1.5px solid ${this.hexA(A.vio,0.55)}`:'1.5px solid transparent',transition:'all .12s'},
+        thumb:{width:38,height:38,borderRadius:9,flex:'0 0 auto',display:'flex',alignItems:'center',justifyContent:'center',background:l.kind==='text'?'#3a3350':`linear-gradient(135deg,${l.hue||'#a78bfa'},${this.hexA(l.hue||'#a78bfa',0.4)})`,opacity:vis?1:0.35},
+        thumbDot:{width:16,height:16,borderRadius:'50%',background:'rgba(255,255,255,.85)',display:'block'},
+        eyeBtn:{width:34,height:34,border:'none',background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:vis?'#cfc9db':'#5f596e',flex:'0 0 auto'},
+        onSelect:()=>this.setState({selected:l.id}),
+        onToggle:(e)=>{e.stopPropagation(); this.setState(st=>({hidden:{...st.hidden,[l.id]:!st.hidden[l.id]}}));},
+      };
+    });
+
+    // fonts
+    const fontList=['Bangers','Luckiest Guy','Pacifico','Fredoka','Rubik'];
+    const fonts=fontList.map(f=>{
+      const sel=s.textFont===f;
+      return {name:f, onClick:()=>this.setState({textFont:f}),
+        chipStyle:{flex:'0 0 auto',border:sel?`1.5px solid ${A.pk}`:'1.5px solid rgba(255,255,255,.1)',background:sel?this.hexA(A.pk,0.14):'#242030',borderRadius:12,padding:'9px 15px',cursor:'pointer'},
+        nameStyle:{fontFamily:`"${f}",cursive,sans-serif`,fontSize:16,color:sel?'#fff':'#cfc9db',whiteSpace:'nowrap'}};
+    });
+
+    // text colors
+    const cols=['#ffffff','#111111','#f472b6','#fbbf24','#34d399','#38bdf8','#a78bfa','#fb7185','#fb923c'];
+    const textColors=cols.map(c=>{
+      const sel=s.textColor===c;
+      return {color:c, onClick:()=>this.setState({textColor:c}),
+        swStyle:{width:34,height:34,borderRadius:'50%',cursor:'pointer',background:c,border:sel?'3px solid #fff':'2px solid rgba(255,255,255,.15)',boxShadow:sel?`0 0 0 2px ${A.pk}`:'none',padding:0}};
+    });
+
+    const textStyle={position:'absolute',left:'50%',bottom:'8%',transform:'translateX(-50%) rotate(-5deg)',fontFamily:`"${s.textFont}",cursive,sans-serif`,color:s.textColor,fontSize:s.textSize,fontWeight:700,WebkitTextStroke:(s.textColor==='#ffffff'||s.textColor==='#fbbf24')?'2.5px #14101a':'2.5px #ffffff',paintOrder:'stroke fill',textShadow:'0 4px 0 rgba(0,0,0,.25)',whiteSpace:'nowrap',letterSpacing:1,pointerEvents:'none',lineHeight:1};
+    const previewTextStyle={...textStyle,fontSize:Math.round(s.textSize*0.55)};
+
+    // erase
+    const etab=(mode,color)=>({flex:1,border:'none',cursor:'pointer',borderRadius:11,padding:'11px',fontFamily:'inherit',fontSize:13,fontWeight:700,background:s.eraseMode===mode?this.hexA(color,0.18):'#242030',color:s.eraseMode===mode?color:'#9a94a8',transition:'all .12s'});
+    const brushPx=Math.max(8,Math.min(40,s.eraseSize*0.4));
+
+    // frames
+    const frames=s.frames.map((f,i)=>{
+      const act=s.current===i;
+      return {id:f.id,index:i+1, onClick:()=>this.setState({current:i}),
+        cellStyle:{flex:'0 0 auto',width:64,height:64,borderRadius:14,cursor:'pointer',position:'relative',border:act?`2px solid ${A.or}`:'2px solid rgba(255,255,255,.08)',backgroundColor:'#221d2e',backgroundImage:'linear-gradient(45deg,#2b2638 25%,transparent 0),linear-gradient(-45deg,#2b2638 25%,transparent 0),linear-gradient(45deg,transparent 75%,#2b2638 0),linear-gradient(-45deg,transparent 75%,#2b2638 0)',backgroundSize:'14px 14px',backgroundPosition:'0 0,0 7px,7px -7px,-7px 0',boxShadow:act?`0 0 0 3px ${this.hexA(A.or,0.25)}`:'none'},
+        num:{position:'absolute',top:4,left:6,fontSize:11,fontWeight:800,color:act?A.or:'#8b8399'}};
+    });
+
+    // export targets
+    const T=[
+      {id:'telegram',name:'Telegram',sub:'Static + animated (.tgs)',color:A.cy,abbr:'T'},
+      {id:'whatsapp',name:'WhatsApp',sub:'Sticker pack (.webp)',color:A.gr,abbr:'W'},
+      {id:'png',name:'PNG',sub:'Transparent image',color:A.vio,abbr:'P'},
+      {id:'webp',name:'WebP',sub:'Smaller file size',color:A.pk,abbr:'WP'},
+      {id:'gif',name:'GIF',sub:'Animated, shareable',color:A.am,abbr:'G'},
+    ];
+    const targets=T.map(t=>{
+      const sel=s.target===t.id;
+      return {...t, selected:sel, onClick:()=>this.setState({target:t.id}),
+        cardStyle:{display:'flex',alignItems:'center',gap:13,width:'100%',border:sel?`1.5px solid ${this.hexA(t.color,0.6)}`:'1.5px solid rgba(255,255,255,.07)',background:sel?this.hexA(t.color,0.1):'#1c1826',borderRadius:16,padding:'12px 14px',cursor:'pointer',fontFamily:'inherit',transition:'all .12s'},
+        iconWrap:{width:40,height:40,borderRadius:11,flex:'0 0 auto',display:'flex',alignItems:'center',justifyContent:'center',background:this.hexA(t.color,0.18)},
+        iconGlyph:{fontFamily:'Fredoka,sans-serif',fontWeight:700,fontSize:16,color:t.color},
+        radio:{width:22,height:22,borderRadius:'50%',flex:'0 0 auto',display:'flex',alignItems:'center',justifyContent:'center',background:sel?t.color:'transparent',border:sel?'none':'2px solid rgba(255,255,255,.2)'}};
+    });
+
+    const dimsMap={telegram:'512 × 512 px',whatsapp:'512 × 512 px',png:'1024 × 1024 px',webp:'512 × 512 px',gif:'512 × 512 px'};
+    const anim=s.exportMode==='animated';
+
+    // quickstart chips (home)
+    const qs=[
+      {id:'photo',label:'From photo',icon:'\u2b1c',color:A.vio,glyph:'photo'},
+      {id:'template',label:'Templates',icon:'',color:A.pk,glyph:'tpl'},
+      {id:'blank',label:'Blank',icon:'',color:A.cy,glyph:'blank'},
+    ];
+    const quickstart=[
+      {label:'From photo',onClick:()=>this.setState({screen:'editor',tool:'bg'}),style:{flex:1,border:'1px solid rgba(255,255,255,.07)',background:'#1c1826',borderRadius:16,padding:'13px 8px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:8,fontFamily:'inherit'},iconWrap:{width:34,height:34,borderRadius:10,background:this.hexA(A.vio,0.16),display:'flex',alignItems:'center',justifyContent:'center'},glyph:{color:A.vio,fontSize:15,fontWeight:800,fontFamily:'Fredoka'},icon:'\ud83d\uddbc',},
+      {label:'Templates',onClick:()=>this.setState({screen:'editor',tool:'text'}),style:{flex:1,border:'1px solid rgba(255,255,255,.07)',background:'#1c1826',borderRadius:16,padding:'13px 8px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:8,fontFamily:'inherit'},iconWrap:{width:34,height:34,borderRadius:10,background:this.hexA(A.pk,0.16),display:'flex',alignItems:'center',justifyContent:'center'},glyph:{color:A.pk,fontSize:15,fontWeight:800,fontFamily:'Fredoka'},icon:'\u2726',},
+      {label:'Blank',onClick:()=>this.setState({screen:'editor',tool:'layers'}),style:{flex:1,border:'1px solid rgba(255,255,255,.07)',background:'#1c1826',borderRadius:16,padding:'13px 8px',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:8,fontFamily:'inherit'},iconWrap:{width:34,height:34,borderRadius:10,background:this.hexA(A.cy,0.16),display:'flex',alignItems:'center',justifyContent:'center'},glyph:{color:A.cy,fontSize:15,fontWeight:800,fontFamily:'Fredoka'},icon:'+',},
+    ];
+
+    // projects (home gallery)
+    const P=[
+      {id:1,name:'Rex woof',kind:'GIF',count:'6 frames',hue:'#a78bfa'},
+      {id:2,name:'Sleepy cat',kind:'PNG',count:'1 layer',hue:'#38bdf8'},
+      {id:3,name:'Party pug',kind:'GIF',count:'8 frames',hue:'#f472b6'},
+      {id:4,name:'Good boy',kind:'PNG',count:'3 layers',hue:'#34d399'},
+    ];
+    const projects=P.map(p=>({...p, onOpen:()=>this.setState({screen:'editor'}),
+      blob:{width:'46%',height:'46%',borderRadius:'50%',background:`linear-gradient(135deg,${p.hue},${this.hexA(p.hue,0.35)})`,boxShadow:`0 6px 18px ${this.hexA(p.hue,0.4)}`},
+      badge:{position:'absolute',top:8,right:8,fontSize:9.5,fontWeight:800,letterSpacing:.3,padding:'3px 7px',borderRadius:8,background:'rgba(19,16,25,.72)',color:p.kind==='GIF'?'#fb923c':'#9a94a8',backdropFilter:'blur(4px)'}}));
+
+    return {
+      // nav
+      isHome:s.screen==='home', isEditor:s.screen==='editor', isExport:s.screen==='export',
+      goHome:()=>this.setState({screen:'home'}), goEditor:()=>this.setState({screen:'editor'}), goExport:()=>this.setState({screen:'export'}),
+      onUndo:()=>this.showToast('Undo'), onRedo:()=>this.showToast('Redo'),
+      // tool booleans + handlers
+      toolLayers:s.tool==='layers', toolAdjust:s.tool==='adjust', toolText:s.tool==='text', toolErase:s.tool==='erase', toolBg:s.tool==='bg', toolFrames:s.tool==='frames',
+      onLayers:()=>this.setTool('layers'), onAdjust:()=>this.setTool('adjust'), onErase:()=>this.setTool('erase'), onBg:()=>this.setTool('bg'), onFrames:()=>this.setTool('frames'),
+      onText:e=>{ if(e&&e.target&&e.target.value!==undefined) this.setState({textValue:e.target.value}); else this.setTool('text'); },
+      tb:{layers:this.tabStyle('layers',A.vio),adjust:this.tabStyle('adjust',A.cy),text:this.tabStyle('text',A.pk),erase:this.tabStyle('erase',A.am),bg:this.tabStyle('bg',A.gr),frames:this.tabStyle('frames',A.or)},
+      // canvas
+      canvasRef:this.canvasRef,
+      showHandles:s.screen==='editor'&&s.tool!=='frames'&&s.selected==='subj',
+      bgRemoved:s.bgRemoved, processing:s.processing,
+      hasText:s.hasText && !s.hidden.txt, textValue:s.textValue, textStyle, previewTextStyle,
+      // adjust
+      sliders, resetAdjust:()=>this.setState({brightness:100,contrast:100,saturation:100,hue:0,opacity:100}),
+      // layers
+      layers, addLayer:()=>this.setState(st=>({layers:[{id:'ph'+Date.now(),name:'New layer',type:'Image layer',kind:'image',hue:'#fb923c'},...st.layers]})),
+      // text
+      fonts, textColors, textSize:s.textSize, onTextSize:e=>this.setState({textSize:+e.target.value}),
+      // erase
+      eraseSize:s.eraseSize, onEraseSize:e=>this.setState({eraseSize:+e.target.value}),
+      setEraseMode:()=>this.setState({eraseMode:'erase'}), setRestoreMode:()=>this.setState({eraseMode:'restore'}),
+      eraseTab:{erase:etab('erase',A.am),restore:etab('restore',A.gr)},
+      brushPreview:{width:brushPx,height:brushPx,borderRadius:'50%',flex:'0 0 auto',background:this.hexA(A.am,0.25),border:`2px solid ${A.am}`},
+      toggleSoft:()=>this.setState(st=>({soft:!st.soft})),
+      softToggle:{width:46,height:26,borderRadius:20,border:'none',cursor:'pointer',padding:2,background:s.soft?A.am:'rgba(255,255,255,.14)',display:'flex',justifyContent:s.soft?'flex-end':'flex-start',transition:'all .15s'},
+      softKnob:{width:22,height:22,borderRadius:'50%',background:'#fff',display:'block'},
+      // bg
+      removeBg:()=>this.removeBg(),
+      bgBtnLabel:s.bgRemoved?'Undo removal':(s.processing?'Working…':'Remove background'),
+      bgBtnStyle:{width:'100%',border:'none',cursor:'pointer',borderRadius:16,padding:'15px',fontFamily:'inherit',fontSize:15,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:9,color:'#08251c',background:s.bgRemoved?'#2f2840':'linear-gradient(135deg,#34d399,#22d3ee)',color:s.bgRemoved?'#cfc9db':'#06231b',boxShadow:s.bgRemoved?'none':'0 8px 22px rgba(52,211,153,.3)'},
+      // frames
+      frames, frameLabel:`Frame ${s.current+1} / ${s.frames.length}`,
+      addFrame:()=>this.setState(st=>({frames:[...st.frames,{id:Date.now()}],current:st.frames.length})),
+      playing:s.playing, paused:!s.playing, playLabel:s.playing?'Pause':'Play',
+      togglePlay:()=>this.togglePlay(),
+      playBtnStyle:{border:'none',cursor:'pointer',borderRadius:20,padding:'7px 15px',fontFamily:'inherit',fontSize:12.5,fontWeight:700,display:'flex',alignItems:'center',gap:6,background:this.hexA(A.or,0.16),color:A.or},
+      fps:s.fps, onFps:e=>this.setFps(+e.target.value),
+      // export
+      setStatic:()=>this.setState({exportMode:'static'}), setAnimated:()=>this.setState({exportMode:'animated'}),
+      modeTab:{
+        static:{flex:1,border:'none',cursor:'pointer',borderRadius:11,padding:'11px',fontFamily:'inherit',fontSize:13.5,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:7,background:!anim?'#3a3350':'transparent',color:!anim?'#fff':'#8b8399',transition:'all .12s'},
+        animated:{flex:1,border:'none',cursor:'pointer',borderRadius:11,padding:'11px',fontFamily:'inherit',fontSize:13.5,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:7,background:anim?'#3a3350':'transparent',color:anim?'#fff':'#8b8399',transition:'all .12s'},
+      },
+      targets,
+      exportDims:dimsMap[s.target]||'512 × 512 px',
+      exportSize:anim?'~64 KB · WebM/GIF':'~18 KB · PNG',
+      exporting:s.exporting, notExporting:!s.exporting,
+      exportCta:'Export '+(anim?'animation':'sticker'),
+      exportBtnStyle:{width:'100%',border:'none',cursor:s.exporting?'default':'pointer',borderRadius:16,padding:'16px',fontFamily:'inherit',fontSize:15.5,fontWeight:800,display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#fff',background:'linear-gradient(135deg,#7c5cff,#f472b6)',boxShadow:'0 10px 26px rgba(124,92,255,.35)',opacity:s.exporting?.8:1},
+      // home
+      quickstart, projects,
+      // toast
+      toast:s.toast,
+    };
+  }
+}
+</script>
+</body>
+</html>
