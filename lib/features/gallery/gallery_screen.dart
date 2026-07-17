@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../core/models/frame.dart';
+import '../../core/models/layer.dart';
+import '../../core/models/layer_transform.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
@@ -10,6 +13,7 @@ import '../../core/widgets/pill_chip.dart';
 import '../../core/widgets/sm_toast.dart';
 import '../../core/widgets/sticker_caption.dart';
 import '../../core/widgets/tool_tab.dart';
+import '../editor/widgets/sticker_canvas.dart';
 
 /// A developer-facing gallery of the shared design-system widgets, used to
 /// eyeball fidelity against `design/Sticker Maker.dc.html` and as the visual
@@ -149,6 +153,46 @@ class _GalleryScreenState extends State<GalleryScreen> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: const Checkerboard(),
+            ),
+          ),
+          _section('Sticker canvas'),
+          Center(
+            child: SizedBox.square(
+              dimension: 220,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: const Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Checkerboard(),
+                    StickerCanvas(
+                      frame: Frame(
+                        id: 'demo',
+                        layers: [
+                          ImageLayer(
+                            id: 'i',
+                            name: 'Rex',
+                            assetPath: 'p.png',
+                            transform: LayerTransform(
+                              position: Offset(256, 220),
+                            ),
+                          ),
+                          TextLayer(
+                            id: 't',
+                            name: 'WOOF!',
+                            text: 'WOOF!',
+                            fontFamily: 'Bangers',
+                            transform: LayerTransform(
+                              position: Offset(256, 400),
+                              rotation: -0.087,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
           _section('Toast'),

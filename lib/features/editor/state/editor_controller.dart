@@ -43,7 +43,10 @@ class EditorController extends Notifier<EditorState> {
               name: 'WOOF!',
               text: 'WOOF!',
               fontFamily: 'Bangers',
-              transform: const LayerTransform(position: Offset(256, 400)),
+              transform: const LayerTransform(
+                position: Offset(256, 400),
+                rotation: -0.087, // ~ -5°, matching the design
+              ),
             ),
           ],
         ),
