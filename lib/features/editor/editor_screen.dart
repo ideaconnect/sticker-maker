@@ -19,6 +19,10 @@ import '../../core/widgets/pill_chip.dart';
 import '../../core/widgets/sm_toast.dart';
 import '../../core/widgets/tool_tab.dart';
 import '../home/project_repository.dart';
+import '../segmentation/mask_processing.dart';
+import '../segmentation/mask_store.dart';
+import '../segmentation/segmentation_engine.dart';
+import '../segmentation/segmentation_registry.dart';
 import 'services/image_import.dart';
 import 'state/editor_controller.dart';
 import 'state/editor_state.dart';
@@ -46,6 +50,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   bool _eraseMode = true; // erase vs restore (M2)
   bool _softEdges = true;
   double _brushSize = 40;
+  bool _removingBg = false; // AI cut-out in progress
 
   Timer? _saveTimer;
   StickerProject? _pendingSave;
@@ -154,6 +159,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                       dropPlaceholder: const DropPlaceholder(),
                     ),
                     if (_hasCutout(editor)) const _CutBadge(),
+                    if (_removingBg) const _RemovingOverlay(),
                   ],
                 ),
               ),
@@ -467,6 +473,9 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     final selected = editor.selectedLayer;
     final image = selected is ImageLayer ? selected : null;
     final removed = image?.maskPath != null;
+    final label = _removingBg
+        ? 'Working…'
+        : (removed ? 'Undo removal' : 'Remove background');
     return Column(
       children: [
         const Padding(
@@ -483,13 +492,14 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         ),
         _emptyHint(
           image == null
-              ? 'Select a photo layer to cut out.\nOn-device AI removal lands in M2 (#26).'
-              : "One tap to isolate your pet. We'll auto-detect edges — refine "
-                    'anything by hand in the Erase tool.',
+              ? 'Select a photo layer to cut out.'
+              : "One tap to isolate your subject. We'll auto-detect the edges — "
+                    'refine anything by hand in the Erase tool.',
         ),
         GradientButton(
-          label: removed ? 'Undo removal' : 'Remove background',
+          label: label,
           icon: Icons.auto_awesome,
+          busy: _removingBg,
           gradient: removed ? null : context.sm.cutoutGradient,
           solidColor: removed ? AppColors.neutralButton : null,
           foreground: removed ? AppColors.textSecondary : AppColors.cutoutInk,
@@ -497,18 +507,46 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           onPressed: image == null
               ? null
               : () {
-                  // Placeholder for the real M2 pipeline: toggle a mask marker.
-                  _controller.setImageMask(
-                    image.id,
-                    removed ? null : '${image.id}.mask',
-                  );
-                  _toast(
-                    removed ? 'Background restored' : 'Background removed',
-                  );
+                  if (removed) {
+                    _controller.setImageMask(image.id, null);
+                    _toast('Background restored');
+                  } else {
+                    _removeBackground(image);
+                  }
                 },
         ),
       ],
     );
+  }
+
+  /// Runs the AI cut-out for [image]: pick the best available segmentation
+  /// engine, clean up the mask, persist it and apply it to the layer (undoable
+  /// via the controller's history). Gracefully reports when no engine can run.
+  Future<void> _removeBackground(ImageLayer image) async {
+    setState(() => _removingBg = true);
+    try {
+      final registry = ref.read(segmentationRegistryProvider);
+      final result = await registry.segment(
+        SegmentationRequest(imagePath: image.assetPath),
+      );
+      if (result == null) {
+        if (mounted) {
+          _toast("Background removal isn't available on this device yet");
+        }
+        return;
+      }
+      final mask = MaskProcessing.process(
+        result.mask,
+        const MaskProcessingOptions(),
+      );
+      final path = await ref.read(maskStoreProvider).save(mask, id: image.id);
+      _controller.setImageMask(image.id, path);
+      if (mounted) _toast('Background removed');
+    } catch (_) {
+      if (mounted) _toast("Couldn't remove the background — try again");
+    } finally {
+      if (mounted) setState(() => _removingBg = false);
+    }
   }
 
   // ------------------------------------------------------------ Erase
@@ -1059,6 +1097,43 @@ class _CutBadge extends StatelessWidget {
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
                 color: AppColors.greenLight,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Full-canvas overlay shown while the AI cut-out runs.
+class _RemovingOverlay extends StatelessWidget {
+  const _RemovingOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Positioned.fill(
+      child: ColoredBox(
+        color: Color(0xB2131019),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 34,
+              height: 34,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                valueColor: AlwaysStoppedAnimation(AppColors.greenLight),
+              ),
+            ),
+            SizedBox(height: 14),
+            Text(
+              'Removing background…',
+              style: TextStyle(
+                fontFamily: AppFonts.ui,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
               ),
             ),
           ],

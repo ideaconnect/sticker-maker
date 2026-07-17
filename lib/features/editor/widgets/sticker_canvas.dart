@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -83,6 +84,23 @@ class StickerCanvas extends StatelessWidget {
       return _ImagePlaceholder(name: layer.name, side: 180 * scale);
     }
     final base = 440.0 * scale; // ~0.86 of the canvas; user scale applied above
+    final colorFilter = layer.adjustments.isIdentity
+        ? null
+        : ColorFilter.matrix(layer.adjustments.toColorMatrix());
+
+    // A cut-out layer composites its alpha mask over the photo (background
+    // removed). The mask file may be absent (e.g. a project opened without its
+    // assets) — fall back to the plain photo in that case.
+    final maskPath = layer.maskPath;
+    if (maskPath != null && File(maskPath).existsSync()) {
+      return _MaskedImage(
+        imagePath: layer.assetPath,
+        maskPath: maskPath,
+        side: base,
+        colorFilter: colorFilter,
+      );
+    }
+
     Widget image = Image.file(
       file,
       width: base,
@@ -91,14 +109,149 @@ class StickerCanvas extends StatelessWidget {
       errorBuilder: (_, _, _) =>
           _ImagePlaceholder(name: layer.name, side: 180 * scale),
     );
-    if (!layer.adjustments.isIdentity) {
-      image = ColorFiltered(
-        colorFilter: ColorFilter.matrix(layer.adjustments.toColorMatrix()),
-        child: image,
-      );
+    if (colorFilter != null) {
+      image = ColorFiltered(colorFilter: colorFilter, child: image);
     }
     return image;
   }
+}
+
+/// Renders a photo with its alpha mask applied — the visible result of an AI
+/// cut-out. Both files are decoded to [ui.Image] and composited with
+/// `BlendMode.dstIn` so the photo survives only where the mask is opaque.
+/// Non-destructive: the source photo and the mask stay separate on disk.
+class _MaskedImage extends StatefulWidget {
+  const _MaskedImage({
+    required this.imagePath,
+    required this.maskPath,
+    required this.side,
+    this.colorFilter,
+  });
+
+  final String imagePath;
+  final String maskPath;
+  final double side;
+  final ColorFilter? colorFilter;
+
+  @override
+  State<_MaskedImage> createState() => _MaskedImageState();
+}
+
+class _MaskedImageState extends State<_MaskedImage> {
+  ui.Image? _base;
+  ui.Image? _mask;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(_MaskedImage old) {
+    super.didUpdateWidget(old);
+    if (old.imagePath != widget.imagePath || old.maskPath != widget.maskPath) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    final base = await _decode(widget.imagePath);
+    final mask = await _decode(widget.maskPath);
+    if (!mounted) {
+      base?.dispose();
+      mask?.dispose();
+      return;
+    }
+    setState(() {
+      _base?.dispose();
+      _mask?.dispose();
+      _base = base;
+      _mask = mask;
+    });
+  }
+
+  static Future<ui.Image?> _decode(String path) async {
+    try {
+      final bytes = await File(path).readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      codec.dispose();
+      return frame.image;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _base?.dispose();
+    _mask?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final base = _base;
+    if (base == null) {
+      return SizedBox.square(dimension: widget.side);
+    }
+    return CustomPaint(
+      size: Size.square(widget.side),
+      painter: _MaskedImagePainter(
+        base: base,
+        mask: _mask,
+        colorFilter: widget.colorFilter,
+      ),
+    );
+  }
+}
+
+/// Paints [base] fitted (contain) into the box, then multiplies its alpha by
+/// [mask] via `BlendMode.dstIn`. [mask] shares the photo's aspect ratio, so it
+/// maps onto the same destination rect.
+class _MaskedImagePainter extends CustomPainter {
+  _MaskedImagePainter({required this.base, this.mask, this.colorFilter});
+
+  final ui.Image base;
+  final ui.Image? mask;
+  final ColorFilter? colorFilter;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final imageSize = Size(base.width.toDouble(), base.height.toDouble());
+    final fitted = applyBoxFit(BoxFit.contain, imageSize, size);
+    final dest = Alignment.center.inscribe(
+      fitted.destination,
+      Offset.zero & size,
+    );
+
+    final basePaint = Paint()..filterQuality = FilterQuality.medium;
+    if (colorFilter != null) basePaint.colorFilter = colorFilter;
+
+    final maskImage = mask;
+    if (maskImage == null) {
+      canvas.drawImageRect(base, Offset.zero & imageSize, dest, basePaint);
+      return;
+    }
+
+    canvas.saveLayer(dest, Paint());
+    canvas.drawImageRect(base, Offset.zero & imageSize, dest, basePaint);
+    canvas.drawImageRect(
+      maskImage,
+      Offset.zero &
+          Size(maskImage.width.toDouble(), maskImage.height.toDouble()),
+      dest,
+      Paint()
+        ..blendMode = BlendMode.dstIn
+        ..filterQuality = FilterQuality.medium,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_MaskedImagePainter old) =>
+      old.base != base || old.mask != mask || old.colorFilter != colorFilter;
 }
 
 /// Stand-in for an image layer until real pixels arrive in #21.

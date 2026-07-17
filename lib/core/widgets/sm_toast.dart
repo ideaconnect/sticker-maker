@@ -136,13 +136,15 @@ class _ToastPill extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              message,
-              style: const TextStyle(
-                fontFamily: AppFonts.ui,
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+            Flexible(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  fontFamily: AppFonts.ui,
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
