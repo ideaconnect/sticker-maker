@@ -17,6 +17,7 @@ class LabeledSlider extends StatelessWidget {
     required this.max,
     required this.accent,
     this.onChanged,
+    this.onChangeEnd,
     this.valueLabel,
     this.valueColor,
     this.divisions,
@@ -28,6 +29,9 @@ class LabeledSlider extends StatelessWidget {
   final double max;
   final Color accent;
   final ValueChanged<double>? onChanged;
+
+  /// Called when a drag gesture ends — used to close an undo step.
+  final ValueChanged<double>? onChangeEnd;
 
   /// Text shown on the right (e.g. "118%"). Defaults to the rounded value.
   final String? valueLabel;
@@ -80,6 +84,7 @@ class LabeledSlider extends StatelessWidget {
             max: max,
             divisions: divisions,
             onChanged: onChanged,
+            onChangeEnd: onChangeEnd,
           ),
         ),
       ],

@@ -10,9 +10,10 @@ import '../../../core/models/sticker_project.dart';
 import 'editor_state.dart';
 import 'editor_tool.dart';
 
-/// Owns the editor document and drives every mutation. All edits go through
-/// here and produce a new immutable [EditorState], which keeps the door open
-/// for the undo/redo history in issue #20.
+/// Owns the editor document and drives every mutation. All document edits go
+/// through [_commit], which records an immutable snapshot for undo/redo (#20).
+/// Continuous gestures (slider drags, typing) coalesce into a single history
+/// step via a coalesce key, reset at interaction boundaries and by [endEdit].
 class EditorController extends Notifier<EditorState> {
   /// Optional seed project (used by the route / tests). Defaults to a demo
   /// project with a single "WOOF!" caption so the canvas is not empty before
@@ -21,6 +22,14 @@ class EditorController extends Notifier<EditorState> {
 
   final StickerProject? _seed;
   int _seq = 0;
+
+  static const int _maxHistory = 50;
+  final List<StickerProject> _undoStack = [];
+  final List<StickerProject> _redoStack = [];
+  String? _coalesceKey;
+
+  bool get canUndo => _undoStack.isNotEmpty;
+  bool get canRedo => _redoStack.isNotEmpty;
 
   String _newId(String prefix) => '${prefix}_${_seq++}';
 
@@ -54,20 +63,67 @@ class EditorController extends Notifier<EditorState> {
     );
   }
 
-  // ------------------------------------------------------------ UI state
-  void setTool(EditorTool tool) => state = state.copyWith(tool: tool);
+  // ------------------------------------------------------------ history
+  /// Commits a new document, recording history. When [coalesce] matches the
+  /// previous commit's key, the two fold into one undo step (e.g. a drag).
+  void _commit(
+    StickerProject next, {
+    String? coalesce,
+    bool clearSelection = false,
+  }) {
+    final coalescing =
+        coalesce != null && coalesce == _coalesceKey && _undoStack.isNotEmpty;
+    if (!coalescing) {
+      _undoStack.add(state.project);
+      if (_undoStack.length > _maxHistory) _undoStack.removeAt(0);
+    }
+    _coalesceKey = coalesce;
+    _redoStack.clear();
+    state = state.copyWith(project: next, clearSelection: clearSelection);
+  }
 
-  void selectLayer(String? id) =>
-      state = state.copyWith(selectedLayerId: id, clearSelection: id == null);
+  void undo() {
+    if (_undoStack.isEmpty) return;
+    _redoStack.add(state.project);
+    final prev = _undoStack.removeLast();
+    _coalesceKey = null;
+    state = state.copyWith(project: prev, clearSelection: true);
+  }
+
+  void redo() {
+    if (_redoStack.isEmpty) return;
+    _undoStack.add(state.project);
+    final next = _redoStack.removeLast();
+    _coalesceKey = null;
+    state = state.copyWith(project: next, clearSelection: true);
+  }
+
+  /// Ends a continuous edit (e.g. a slider drag), so the next edit starts a
+  /// fresh undo step.
+  void endEdit() => _coalesceKey = null;
+
+  // ------------------------------------------------------------ UI state
+  void setTool(EditorTool tool) {
+    _coalesceKey = null;
+    state = state.copyWith(tool: tool);
+  }
+
+  void selectLayer(String? id) {
+    _coalesceKey = null;
+    state = state.copyWith(selectedLayerId: id, clearSelection: id == null);
+  }
 
   // ------------------------------------------------------------ layer ops
-  void _mutateLayers(List<Layer> Function(List<Layer>) transform) {
+  void _mutateLayers(
+    List<Layer> Function(List<Layer>) transform, {
+    String? coalesce,
+  }) {
     final frames = [...state.project.frames];
     final index = state.project.safeFrameIndex;
     frames[index] = frames[index].copyWith(
       layers: transform(frames[index].layers),
     );
-    state = state.copyWith(project: state.project.copyWith(frames: frames));
+    _commit(state.project.copyWith(frames: frames), coalesce: coalesce);
   }
 
   TextLayer addTextLayer({
@@ -116,12 +172,14 @@ class EditorController extends Notifier<EditorState> {
 
   void setOpacity(String id, double opacity) => _updateLayer(
     id,
+    coalesce: 'opacity:$id',
     image: (l) => l.copyWith(opacity: opacity),
     text: (l) => l.copyWith(opacity: opacity),
   );
 
   void updateTransform(String id, LayerTransform transform) => _updateLayer(
     id,
+    coalesce: 'transform:$id',
     image: (l) => l.copyWith(transform: transform),
     text: (l) => l.copyWith(transform: transform),
   );
@@ -134,6 +192,7 @@ class EditorController extends Notifier<EditorState> {
     Color? color,
   }) => _updateLayer(
     id,
+    coalesce: 'text:$id',
     text: (l) => l.copyWith(
       text: text,
       name: text,
@@ -150,7 +209,11 @@ class EditorController extends Notifier<EditorState> {
   );
 
   void updateImageAdjustments(String id, ImageAdjustments adjustments) =>
-      _updateLayer(id, image: (l) => l.copyWith(adjustments: adjustments));
+      _updateLayer(
+        id,
+        coalesce: 'adjust:$id',
+        image: (l) => l.copyWith(adjustments: adjustments),
+      );
 
   void setImageMask(String id, String? maskPath) => _updateLayer(
     id,
@@ -165,6 +228,7 @@ class EditorController extends Notifier<EditorState> {
     String id, {
     ImageLayer Function(ImageLayer)? image,
     TextLayer Function(TextLayer)? text,
+    String? coalesce,
   }) {
     _mutateLayers(
       (layers) => layers.map((layer) {
@@ -174,6 +238,7 @@ class EditorController extends Notifier<EditorState> {
           TextLayer() => text?.call(layer) ?? layer,
         };
       }).toList(),
+      coalesce: coalesce,
     );
   }
 
@@ -192,18 +257,17 @@ class EditorController extends Notifier<EditorState> {
       layers: source.layers.map(_cloneWithNewId).toList(),
     );
     final frames = [...project.frames, clone];
-    state = state.copyWith(
-      project: project.copyWith(
-        frames: frames,
-        currentFrameIndex: frames.length - 1,
-      ),
+    _commit(
+      project.copyWith(frames: frames, currentFrameIndex: frames.length - 1),
       clearSelection: true,
     );
   }
 
+  /// Frame navigation — not an undoable document edit.
   void selectFrame(int index) {
     final project = state.project;
     if (index < 0 || index >= project.frames.length) return;
+    _coalesceKey = null;
     state = state.copyWith(
       project: project.copyWith(currentFrameIndex: index),
       clearSelection: true,
@@ -215,14 +279,13 @@ class EditorController extends Notifier<EditorState> {
     if (project.frames.length <= 1) return; // keep at least one frame
     final frames = [...project.frames]..removeAt(index);
     final current = project.currentFrameIndex.clamp(0, frames.length - 1);
-    state = state.copyWith(
-      project: project.copyWith(frames: frames, currentFrameIndex: current),
+    _commit(
+      project.copyWith(frames: frames, currentFrameIndex: current),
       clearSelection: true,
     );
   }
 
-  void rename(String name) =>
-      state = state.copyWith(project: state.project.copyWith(name: name));
+  void rename(String name) => _commit(state.project.copyWith(name: name));
 }
 
 /// Editor state for the active document. Override in tests / the editor route

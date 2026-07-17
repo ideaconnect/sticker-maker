@@ -110,6 +110,35 @@ void main() {
     expect(find.text('Caption'), findsNothing);
   });
 
+  testWidgets('undo button enables after an edit and reverses it', (
+    tester,
+  ) async {
+    await pumpEditor(tester, project: oneTextProject());
+
+    // Undo starts disabled.
+    final undoButton = tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byIcon(Icons.undo),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(undoButton.onPressed, isNull);
+
+    // Make an edit: add a text layer via the Layers panel.
+    await tester.tap(find.text('Layers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add text'));
+    await tester.pumpAndSettle();
+    expect(find.text('Text layer'), findsNWidgets(2));
+
+    // Undo is now enabled; tapping it reverses the add.
+    await tester.tap(find.byIcon(Icons.undo));
+    await tester.pumpAndSettle();
+    expect(find.text('Text layer'), findsOneWidget);
+  });
+
   testWidgets('switching to Frames shows the frames panel', (tester) async {
     await pumpEditor(tester); // demo project
 

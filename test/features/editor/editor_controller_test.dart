@@ -244,4 +244,88 @@ void main() {
     expect(base.copyWith(clearSelection: true).selectedLayerId, isNull);
     expect(base.copyWith(tool: EditorTool.frames).selectedLayerId, 'abc');
   });
+
+  group('undo / redo', () {
+    ImageLayer imgOf(ProviderContainer c) =>
+        c.read(editorControllerProvider).layers.firstWhere((l) => l.id == 'img')
+            as ImageLayer;
+
+    test('starts with empty history', () {
+      final h = harness(twoLayerProject());
+      expect(h.controller.canUndo, isFalse);
+      expect(h.controller.canRedo, isFalse);
+      h.controller.undo(); // no-op
+      h.controller.redo(); // no-op
+      expect(h.container.read(editorControllerProvider).layers, hasLength(2));
+    });
+
+    test('undo reverses an edit and redo re-applies it', () {
+      final h = harness(twoLayerProject());
+      h.controller.addTextLayer(text: 'New');
+      expect(h.controller.canUndo, isTrue);
+      expect(h.container.read(editorControllerProvider).layers, hasLength(3));
+
+      h.controller.undo();
+      expect(h.container.read(editorControllerProvider).layers, hasLength(2));
+      expect(h.controller.canRedo, isTrue);
+
+      h.controller.redo();
+      expect(h.container.read(editorControllerProvider).layers, hasLength(3));
+    });
+
+    test('selecting a layer or switching tool is not undoable', () {
+      final h = harness(twoLayerProject());
+      h.controller.selectLayer('img');
+      h.controller.setTool(EditorTool.text);
+      expect(h.controller.canUndo, isFalse);
+    });
+
+    test('a continuous edit coalesces into one undo step', () {
+      final h = harness(twoLayerProject());
+      h.controller.updateImageAdjustments(
+        'img',
+        const ImageAdjustments(brightness: 1.1),
+      );
+      h.controller.updateImageAdjustments(
+        'img',
+        const ImageAdjustments(brightness: 1.2),
+      );
+      h.controller.updateImageAdjustments(
+        'img',
+        const ImageAdjustments(brightness: 1.3),
+      );
+      expect(h.controller.canUndo, isTrue);
+
+      h.controller.undo(); // one step reverts the whole drag
+      expect(imgOf(h.container).adjustments, ImageAdjustments.identity);
+      expect(h.controller.canUndo, isFalse);
+    });
+
+    test('endEdit closes a step so the next drag is separate', () {
+      final h = harness(twoLayerProject());
+      h.controller.updateImageAdjustments(
+        'img',
+        const ImageAdjustments(brightness: 1.2),
+      );
+      h.controller.endEdit();
+      h.controller.updateImageAdjustments(
+        'img',
+        const ImageAdjustments(brightness: 1.5),
+      );
+
+      h.controller.undo();
+      expect(imgOf(h.container).adjustments.brightness, closeTo(1.2, 1e-9));
+      h.controller.undo();
+      expect(imgOf(h.container).adjustments, ImageAdjustments.identity);
+    });
+
+    test('a new edit clears the redo stack', () {
+      final h = harness(twoLayerProject());
+      h.controller.addTextLayer(text: 'A');
+      h.controller.undo();
+      expect(h.controller.canRedo, isTrue);
+      h.controller.addTextLayer(text: 'B');
+      expect(h.controller.canRedo, isFalse);
+    });
+  });
 }

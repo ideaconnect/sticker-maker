@@ -50,6 +50,9 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
 
   void _toast(String m) => showSmToast(context, m);
 
+  /// Closes the current undo step when a slider drag ends.
+  void _endSliderEdit(double _) => _controller.endEdit();
+
   @override
   void dispose() {
     _textController.dispose();
@@ -68,10 +71,12 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
               children: [
                 _TopBar(
                   title: editor.project.name,
+                  canUndo: _controller.canUndo,
+                  canRedo: _controller.canRedo,
                   onBack: () => context.pop(),
                   onExport: () => context.pushNamed(Routes.export),
-                  onUndo: () => _toast('Undo'),
-                  onRedo: () => _toast('Redo'),
+                  onUndo: _controller.undo,
+                  onRedo: _controller.redo,
                 ),
                 Expanded(child: _canvas(editor)),
                 _panel(editor, panelMax),
@@ -239,6 +244,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           accent: AppColors.amber,
           valueLabel: '${(adj.brightness * 100).round()}%',
           onChanged: (v) => update(adj.copyWith(brightness: v / 100)),
+          onChangeEnd: _endSliderEdit,
         ),
         LabeledSlider(
           label: 'Contrast',
@@ -248,6 +254,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           accent: AppColors.cyan,
           valueLabel: '${(adj.contrast * 100).round()}%',
           onChanged: (v) => update(adj.copyWith(contrast: v / 100)),
+          onChangeEnd: _endSliderEdit,
         ),
         LabeledSlider(
           label: 'Saturation',
@@ -257,6 +264,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           accent: AppColors.pink,
           valueLabel: '${(adj.saturation * 100).round()}%',
           onChanged: (v) => update(adj.copyWith(saturation: v / 100)),
+          onChangeEnd: _endSliderEdit,
         ),
         LabeledSlider(
           label: 'Hue',
@@ -266,6 +274,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           accent: AppColors.violet,
           valueLabel: '${adj.hue.round()}°',
           onChanged: (v) => update(adj.copyWith(hue: v)),
+          onChangeEnd: _endSliderEdit,
         ),
         LabeledSlider(
           label: 'Opacity',
@@ -275,6 +284,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           accent: AppColors.green,
           valueLabel: '${(selected.opacity * 100).round()}%',
           onChanged: (v) => _controller.setOpacity(id, v / 100),
+          onChangeEnd: _endSliderEdit,
         ),
       ],
     );
@@ -395,6 +405,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           valueColor: AppColors.textMuted,
           valueLabel: '${selected.fontSize.round()}px',
           onChanged: (v) => _controller.updateTextLayer(id, fontSize: v),
+          onChangeEnd: _endSliderEdit,
         ),
         const SizedBox(height: 4),
         Wrap(
@@ -1065,6 +1076,8 @@ class _SelectionFrame extends StatelessWidget {
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.title,
+    required this.canUndo,
+    required this.canRedo,
     required this.onBack,
     required this.onExport,
     required this.onUndo,
@@ -1072,6 +1085,8 @@ class _TopBar extends StatelessWidget {
   });
 
   final String title;
+  final bool canUndo;
+  final bool canRedo;
   final VoidCallback onBack;
   final VoidCallback onExport;
   final VoidCallback onUndo;
@@ -1118,11 +1133,13 @@ class _TopBar extends StatelessWidget {
             ),
           ),
           IconButton(
-            onPressed: onUndo,
+            onPressed: canUndo ? onUndo : null,
+            disabledColor: AppColors.textFaint,
             icon: const Icon(Icons.undo, size: 20, color: AppColors.textMuted),
           ),
           IconButton(
-            onPressed: onRedo,
+            onPressed: canRedo ? onRedo : null,
+            disabledColor: AppColors.textFaint,
             icon: const Icon(Icons.redo, size: 20, color: AppColors.textMuted),
           ),
           const SizedBox(width: 4),
