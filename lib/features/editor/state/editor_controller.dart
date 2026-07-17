@@ -143,6 +143,12 @@ class EditorController extends Notifier<EditorState> {
     ),
   );
 
+  void renameLayer(String id, String name) => _updateLayer(
+    id,
+    image: (l) => l.copyWith(name: name),
+    text: (l) => l.copyWith(name: name),
+  );
+
   void updateImageAdjustments(String id, ImageAdjustments adjustments) =>
       _updateLayer(id, image: (l) => l.copyWith(adjustments: adjustments));
 

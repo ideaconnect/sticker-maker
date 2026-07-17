@@ -214,6 +214,15 @@ void main() {
     });
   });
 
+  test('renameLayer changes a layer name of either type', () {
+    final h = harness(twoLayerProject());
+    h.controller.renameLayer('img', 'Dog photo');
+    h.controller.renameLayer('txt', 'Caption 1');
+    final layers = h.container.read(editorControllerProvider).layers;
+    expect(layers.firstWhere((l) => l.id == 'img').name, 'Dog photo');
+    expect(layers.firstWhere((l) => l.id == 'txt').name, 'Caption 1');
+  });
+
   test('rename updates the project name', () {
     final h = harness(twoLayerProject());
     h.controller.rename('Party pug');

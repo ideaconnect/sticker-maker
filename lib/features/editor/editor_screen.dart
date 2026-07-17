@@ -683,6 +683,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                 layer: layer,
                 selected: editor.selectedLayerId == layer.id,
                 onSelect: () => _controller.selectLayer(layer.id),
+                onRename: () => _showRenameDialog(layer),
                 onToggleVisibility: () =>
                     _controller.toggleVisibility(layer.id),
                 onDelete: () => _controller.removeLayer(layer.id),
@@ -691,6 +692,44 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           ),
       ],
     );
+  }
+
+  Future<void> _showRenameDialog(Layer layer) async {
+    var value = layer.name;
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.panel,
+        title: const Text(
+          'Rename layer',
+          style: TextStyle(
+            fontFamily: AppFonts.display,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        // TextFormField owns and disposes its own controller.
+        content: TextFormField(
+          initialValue: layer.name,
+          autofocus: true,
+          style: const TextStyle(color: AppColors.textPrimary),
+          onChanged: (v) => value = v,
+          onFieldSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, value.trim()),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    if (name != null && name.isNotEmpty) {
+      _controller.renameLayer(layer.id, name);
+    }
   }
 
   Widget _segTab(String label, bool active, Color accent, VoidCallback onTap) {
@@ -743,6 +782,7 @@ class _LayerRow extends StatelessWidget {
     required this.layer,
     required this.selected,
     required this.onSelect,
+    required this.onRename,
     required this.onToggleVisibility,
     required this.onDelete,
   });
@@ -750,6 +790,7 @@ class _LayerRow extends StatelessWidget {
   final Layer layer;
   final bool selected;
   final VoidCallback onSelect;
+  final VoidCallback onRename;
   final VoidCallback onToggleVisibility;
   final VoidCallback onDelete;
 
@@ -763,6 +804,7 @@ class _LayerRow extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: onSelect,
+          onLongPress: onRename,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(

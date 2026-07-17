@@ -91,6 +91,23 @@ void main() {
     expect(find.text('Tap a font to preview'), findsOneWidget);
   });
 
+  testWidgets('long-pressing a layer renames it', (tester) async {
+    await pumpEditor(tester, project: oneTextProject());
+    await tester.tap(find.text('Layers'));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('Caption'));
+    await tester.pumpAndSettle();
+
+    // Rename dialog is up; replace the text and confirm.
+    await tester.enterText(find.byType(TextField).last, 'Speech');
+    await tester.tap(find.text('Rename'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Speech'), findsOneWidget);
+    expect(find.text('Caption'), findsNothing);
+  });
+
   testWidgets('switching to Frames shows the frames panel', (tester) async {
     await pumpEditor(tester); // demo project
 
