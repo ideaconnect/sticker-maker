@@ -11,7 +11,6 @@ import '../../core/models/layer.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
-import '../../core/widgets/checkerboard.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/labeled_slider.dart';
 import '../../core/widgets/pill_chip.dart';
@@ -21,7 +20,7 @@ import 'services/image_import.dart';
 import 'state/editor_controller.dart';
 import 'state/editor_state.dart';
 import 'state/editor_tool.dart';
-import 'widgets/sticker_canvas.dart';
+import 'widgets/editor_canvas.dart';
 
 /// Editor: top bar, model-driven sticker canvas, a contextual panel that swaps
 /// per tool, and the six-tab tool bar. State lives in [editorControllerProvider];
@@ -92,7 +91,6 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   // ---------------------------------------------------------------- canvas
   Widget _canvas(EditorState editor) {
     final tokens = context.sm;
-    final selected = editor.selectedLayer;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
       child: Center(
@@ -116,18 +114,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    const Checkerboard(),
-                    if (editor.layers.isEmpty)
-                      Center(
-                        child: DottedPlaceholder(
-                          onTap: () => _pickPhoto(ImageSource.gallery),
-                        ),
-                      )
-                    else
-                      StickerCanvas(frame: editor.currentFrame),
+                    EditorCanvas(
+                      onEmptyTap: () => _pickPhoto(ImageSource.gallery),
+                      dropPlaceholder: const DropPlaceholder(),
+                    ),
                     if (_hasCutout(editor)) const _CutBadge(),
-                    if (selected != null && editor.tool != EditorTool.frames)
-                      _SelectionFrame(name: selected.name),
                   ],
                 ),
               ),
@@ -1023,56 +1014,6 @@ class _CutBadge extends StatelessWidget {
   }
 }
 
-/// A static selection indicator drawn around the canvas while a layer is
-/// selected. Interactive drag handles arrive with gesture transforms (#19).
-class _SelectionFrame extends StatelessWidget {
-  const _SelectionFrame({required this.name});
-
-  final String name;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.cyan, width: 1.5),
-            ),
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Transform.translate(
-                offset: const Offset(0, -10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.cyan,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    name,
-                    style: const TextStyle(
-                      fontFamily: AppFonts.ui,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF06121A),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.title,
@@ -1170,60 +1111,6 @@ class _PanelHint extends StatelessWidget {
         fontFamily: AppFonts.ui,
         fontSize: 11,
         color: AppColors.textMuted,
-      ),
-    );
-  }
-}
-
-/// The dashed "drop a photo here" placeholder shown on an empty canvas.
-class DottedPlaceholder extends StatelessWidget {
-  const DottedPlaceholder({super.key, this.onTap});
-
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: FractionallySizedBox(
-        widthFactor: 0.62,
-        heightFactor: 0.62,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.18),
-              width: 2,
-            ),
-          ),
-          child: const Center(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Padding(
-                padding: EdgeInsets.all(8),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.add_photo_alternate_outlined,
-                      size: 34,
-                      color: AppColors.textMuted,
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Drop your pet photo',
-                      style: TextStyle(
-                        fontFamily: AppFonts.ui,
-                        fontSize: 12,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
