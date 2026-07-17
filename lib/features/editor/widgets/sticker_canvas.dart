@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/models/frame.dart';
 import '../../../core/models/layer.dart';
 import '../../../core/models/sticker_project.dart';
+import '../../../core/rendering/color_matrix.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/sticker_caption.dart';
@@ -68,8 +71,33 @@ class StickerCanvas extends StatelessWidget {
         color: layer.color,
         rotation: 0, // rotation handled by the enclosing Transform
       ),
-      ImageLayer() => _ImagePlaceholder(name: layer.name, side: 180 * scale),
+      ImageLayer() => _imageContent(layer, scale),
     };
+  }
+
+  Widget _imageContent(ImageLayer layer, double scale) {
+    final file = File(layer.assetPath);
+    // Show the placeholder synchronously for a missing asset (e.g. the demo /
+    // gallery fixtures, or a deleted file) instead of flashing an error frame.
+    if (!file.existsSync()) {
+      return _ImagePlaceholder(name: layer.name, side: 180 * scale);
+    }
+    final base = 440.0 * scale; // ~0.86 of the canvas; user scale applied above
+    Widget image = Image.file(
+      file,
+      width: base,
+      height: base,
+      fit: BoxFit.contain,
+      errorBuilder: (_, _, _) =>
+          _ImagePlaceholder(name: layer.name, side: 180 * scale),
+    );
+    if (!layer.adjustments.isIdentity) {
+      image = ColorFiltered(
+        colorFilter: ColorFilter.matrix(layer.adjustments.toColorMatrix()),
+        child: image,
+      );
+    }
+    return image;
   }
 }
 

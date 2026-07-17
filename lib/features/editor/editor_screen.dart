@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../app/router.dart';
 import '../../core/models/image_adjustments.dart';
@@ -16,6 +17,7 @@ import '../../core/widgets/labeled_slider.dart';
 import '../../core/widgets/pill_chip.dart';
 import '../../core/widgets/sm_toast.dart';
 import '../../core/widgets/tool_tab.dart';
+import 'services/image_import.dart';
 import 'state/editor_controller.dart';
 import 'state/editor_state.dart';
 import 'state/editor_tool.dart';
@@ -113,8 +115,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                     if (editor.layers.isEmpty)
                       Center(
                         child: DottedPlaceholder(
-                          onTap: () =>
-                              _toast('Photo import arrives in M1 (#21)'),
+                          onTap: () => _pickPhoto(ImageSource.gallery),
                         ),
                       )
                     else
@@ -664,11 +665,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           trailing: PillChip(
             label: 'Add',
             icon: Icons.add,
-            onTap: () => _controller.addTextLayer(),
+            onTap: _showAddMenu,
           ),
         ),
         if (layers.isEmpty)
-          _emptyHint('No layers yet. Add text, or import a photo (#21).')
+          _emptyHint('No layers yet. Tap Add to import a photo or add text.')
         else
           ReorderableListView.builder(
             shrinkWrap: true,
@@ -691,6 +692,80 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             },
           ),
       ],
+    );
+  }
+
+  /// Imports a photo from the given [source] and adds it as an image layer.
+  Future<void> _pickPhoto(ImageSource source) async {
+    final service = ref.read(imageImportServiceProvider);
+    try {
+      final path = source == ImageSource.camera
+          ? await service.pickFromCamera()
+          : await service.pickFromGallery();
+      if (path == null) return; // cancelled
+      _controller.addImageLayer(assetPath: path);
+      _controller.setTool(EditorTool.adjust);
+    } catch (_) {
+      if (mounted) _toast('Could not import photo');
+    }
+  }
+
+  /// Bottom sheet to add a layer: a photo (camera / gallery) or text.
+  Future<void> _showAddMenu() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _sheetTile(
+              ctx,
+              Icons.photo_camera_outlined,
+              'Take photo',
+              'camera',
+            ),
+            _sheetTile(
+              ctx,
+              Icons.photo_library_outlined,
+              'Choose photo',
+              'gallery',
+            ),
+            _sheetTile(ctx, Icons.title, 'Add text', 'text'),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    switch (choice) {
+      case 'camera':
+        await _pickPhoto(ImageSource.camera);
+      case 'gallery':
+        await _pickPhoto(ImageSource.gallery);
+      case 'text':
+        _controller.addTextLayer();
+    }
+  }
+
+  Widget _sheetTile(
+    BuildContext ctx,
+    IconData icon,
+    String label,
+    String value,
+  ) {
+    return ListTile(
+      leading: Icon(icon, color: AppColors.textSecondary),
+      title: Text(
+        label,
+        style: const TextStyle(
+          fontFamily: AppFonts.ui,
+          color: AppColors.textPrimary,
+        ),
+      ),
+      onTap: () => Navigator.pop(ctx, value),
     );
   }
 

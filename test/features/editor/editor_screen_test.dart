@@ -71,6 +71,8 @@ void main() {
 
     await tester.tap(find.text('Add'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Add text')); // choose from the Add menu
+    await tester.pumpAndSettle();
 
     expect(find.text('Text layer'), findsNWidgets(2));
   });
