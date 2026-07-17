@@ -1,9 +1,12 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
+import '../../core/models/image_adjustments.dart';
+import '../../core/models/layer.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
@@ -12,39 +15,38 @@ import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/labeled_slider.dart';
 import '../../core/widgets/pill_chip.dart';
 import '../../core/widgets/sm_toast.dart';
-import '../../core/widgets/sticker_caption.dart';
 import '../../core/widgets/tool_tab.dart';
+import 'state/editor_controller.dart';
+import 'state/editor_state.dart';
+import 'state/editor_tool.dart';
+import 'widgets/sticker_canvas.dart';
 
-/// Editor shell: top bar, sticker canvas, a contextual panel that swaps per
-/// tool, and the six-tab tool bar. The real editing engine (canvas gestures,
-/// AI cut-out, encoders) arrives in later milestones — this establishes the
-/// chrome and design language.
-class EditorScreen extends StatefulWidget {
+/// Editor: top bar, model-driven sticker canvas, a contextual panel that swaps
+/// per tool, and the six-tab tool bar. State lives in [editorControllerProvider];
+/// this widget renders it and dispatches edits. Image-dependent tools (Adjust,
+/// Cut out, Erase) wait on image import (#21) / AI segmentation (#2).
+class EditorScreen extends ConsumerStatefulWidget {
   const EditorScreen({super.key});
 
   @override
-  State<EditorScreen> createState() => _EditorScreenState();
+  ConsumerState<EditorScreen> createState() => _EditorScreenState();
 }
 
-class _EditorScreenState extends State<EditorScreen> {
-  SmAccent _tool = SmAccent.adjust;
+class _EditorScreenState extends ConsumerState<EditorScreen> {
+  final TextEditingController _textController = TextEditingController();
+  String? _editingTextId;
 
-  // Adjust
-  double _brightness = 104,
-      _contrast = 108,
-      _saturation = 118,
-      _hue = 0,
-      _opacity = 100;
+  // Transient tool UI state not yet backed by the model.
+  bool _isPlaying = false; // frame playback (M4)
+  double _fps = 8; // (M4)
+  bool _eraseMode = true; // erase vs restore (M2)
+  bool _softEdges = true;
+  double _brushSize = 40;
 
-  // Text
-  late final TextEditingController _textController = TextEditingController(
-    text: _textValue,
-  );
-  String _textValue = 'WOOF!';
-  String _textFont = AppFonts.bangers;
-  Color _textColor = Colors.white;
-  double _textSize = 40;
-  final bool _hasText = true;
+  EditorController get _controller =>
+      ref.read(editorControllerProvider.notifier);
+
+  void _toast(String m) => showSmToast(context, m);
 
   @override
   void dispose() {
@@ -52,44 +54,26 @@ class _EditorScreenState extends State<EditorScreen> {
     super.dispose();
   }
 
-  // Cut out
-  bool _bgRemoved = false;
-
-  // Erase
-  double _brushSize = 40;
-  bool _eraseMode = true; // true=erase, false=restore
-  bool _softEdges = true;
-
-  // Frames
-  int _frameCount = 3;
-  int _currentFrame = 0;
-  double _fps = 8;
-  bool _isPlaying = false;
-
-  void _toast(String m) => showSmToast(context, m);
-
   @override
   Widget build(BuildContext context) {
+    final editor = ref.watch(editorControllerProvider);
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            // Cap the panel so the fixed chrome (top bar + tool bar + panel)
-            // can never exceed the available height — e.g. when the keyboard
-            // opens in the Text tool, or in split-screen. The canvas Expanded
-            // absorbs the rest; the panel's own scroll view handles overflow.
             final panelMax = math.min(300.0, constraints.maxHeight * 0.5);
             return Column(
               children: [
                 _TopBar(
+                  title: editor.project.name,
                   onBack: () => context.pop(),
                   onExport: () => context.pushNamed(Routes.export),
                   onUndo: () => _toast('Undo'),
                   onRedo: () => _toast('Redo'),
                 ),
-                Expanded(child: _canvas()),
-                _panel(panelMax),
-                _toolBar(),
+                Expanded(child: _canvas(editor)),
+                _panel(editor, panelMax),
+                _toolBar(editor),
               ],
             );
           },
@@ -99,8 +83,9 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   // ---------------------------------------------------------------- canvas
-  Widget _canvas() {
+  Widget _canvas(EditorState editor) {
     final tokens = context.sm;
+    final selected = editor.selectedLayer;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
       child: Center(
@@ -125,9 +110,18 @@ class _EditorScreenState extends State<EditorScreen> {
                   fit: StackFit.expand,
                   children: [
                     const Checkerboard(),
-                    _subject(),
-                    if (_bgRemoved) _cutBadge(),
-                    if (_hasText) _textOverlay(),
+                    if (editor.layers.isEmpty)
+                      Center(
+                        child: DottedPlaceholder(
+                          onTap: () =>
+                              _toast('Photo import arrives in M1 (#21)'),
+                        ),
+                      )
+                    else
+                      StickerCanvas(frame: editor.currentFrame),
+                    if (_hasCutout(editor)) const _CutBadge(),
+                    if (selected != null && editor.tool != EditorTool.frames)
+                      _SelectionFrame(name: selected.name),
                   ],
                 ),
               ),
@@ -138,66 +132,11 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  Widget _subject() {
-    return Center(
-      child: Opacity(
-        opacity: (_opacity / 100).clamp(0, 1),
-        child: DottedPlaceholder(
-          onTap: () => _toast('Photo import arrives in M1'),
-        ),
-      ),
-    );
-  }
-
-  Widget _cutBadge() {
-    return Positioned(
-      top: 12,
-      left: 12,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: AppColors.green.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.green.withValues(alpha: 0.5)),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check, size: 13, color: AppColors.greenLight),
-            SizedBox(width: 5),
-            Text(
-              'Cut out',
-              style: TextStyle(
-                fontFamily: AppFonts.ui,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: AppColors.greenLight,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _textOverlay() {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 24,
-      child: Center(
-        child: StickerCaption(
-          text: _textValue,
-          fontFamily: _textFont,
-          fontSize: _textSize,
-          color: _textColor,
-        ),
-      ),
-    );
-  }
+  bool _hasCutout(EditorState editor) =>
+      editor.layers.any((l) => l is ImageLayer && l.maskPath != null);
 
   // ---------------------------------------------------------------- panel
-  Widget _panel(double maxHeight) {
+  Widget _panel(EditorState editor, double maxHeight) {
     final tokens = context.sm;
     return Container(
       width: double.infinity,
@@ -210,40 +149,34 @@ class _EditorScreenState extends State<EditorScreen> {
         ),
       ),
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-      child: SingleChildScrollView(child: _panelBody()),
+      child: SingleChildScrollView(child: _panelBody(editor)),
     );
   }
 
-  Widget _panelBody() {
-    switch (_tool) {
-      case SmAccent.adjust:
-        return _adjustPanel();
-      case SmAccent.text:
-        return _textPanel();
-      case SmAccent.cutout:
-        return _cutoutPanel();
-      case SmAccent.erase:
-        return _erasePanel();
-      case SmAccent.frames:
-        return _framesPanel();
-      case SmAccent.layers:
-        return _layersPanel();
-    }
+  Widget _panelBody(EditorState editor) {
+    return switch (editor.tool) {
+      EditorTool.adjust => _adjustPanel(editor),
+      EditorTool.text => _textPanel(editor),
+      EditorTool.cutout => _cutoutPanel(editor),
+      EditorTool.erase => _erasePanel(),
+      EditorTool.frames => _framesPanel(editor),
+      EditorTool.layers => _layersPanel(editor),
+    };
   }
 
-  Widget _panelHeader(String title, SmAccent accent, {Widget? trailing}) {
+  Widget _panelHeader(EditorTool tool, {Widget? trailing}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            title,
+            tool.panelTitle,
             style: TextStyle(
               fontFamily: AppFonts.display,
               fontWeight: FontWeight.w600,
               fontSize: 15,
-              color: context.sm.accent(accent),
+              color: context.sm.accent(tool.accent),
             ),
           ),
           ?trailing,
@@ -252,73 +185,102 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  Widget _adjustPanel() {
+  Widget _emptyHint(String message) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      child: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontFamily: AppFonts.ui,
+          fontSize: 12.5,
+          color: AppColors.textMuted,
+          height: 1.5,
+        ),
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------ Adjust
+  Widget _adjustPanel(EditorState editor) {
+    final selected = editor.selectedLayer;
+    if (selected is! ImageLayer) {
+      return Column(
+        children: [
+          _panelHeader(EditorTool.adjust),
+          _emptyHint(
+            'Adjustments apply to a photo layer.\nAdd a photo (import lands in M1, #21).',
+          ),
+        ],
+      );
+    }
+    final id = selected.id;
+    final adj = selected.adjustments;
+    void update(ImageAdjustments next) =>
+        _controller.updateImageAdjustments(id, next);
     return Column(
       children: [
         _panelHeader(
-          'Adjust',
-          SmAccent.adjust,
+          EditorTool.adjust,
           trailing: PillChip(
             label: 'Reset',
-            onTap: () => setState(() {
-              _brightness = 100;
-              _contrast = 100;
-              _saturation = 100;
-              _hue = 0;
-              _opacity = 100;
-            }),
+            onTap: () {
+              _controller.updateImageAdjustments(id, ImageAdjustments.identity);
+              _controller.setOpacity(id, 1);
+            },
           ),
         ),
         LabeledSlider(
           label: 'Brightness',
-          value: _brightness,
+          value: adj.brightness * 100,
           min: 0,
           max: 200,
           accent: AppColors.amber,
-          valueLabel: '${_brightness.round()}%',
-          onChanged: (v) => setState(() => _brightness = v),
+          valueLabel: '${(adj.brightness * 100).round()}%',
+          onChanged: (v) => update(adj.copyWith(brightness: v / 100)),
         ),
         LabeledSlider(
           label: 'Contrast',
-          value: _contrast,
+          value: adj.contrast * 100,
           min: 0,
           max: 200,
           accent: AppColors.cyan,
-          valueLabel: '${_contrast.round()}%',
-          onChanged: (v) => setState(() => _contrast = v),
+          valueLabel: '${(adj.contrast * 100).round()}%',
+          onChanged: (v) => update(adj.copyWith(contrast: v / 100)),
         ),
         LabeledSlider(
           label: 'Saturation',
-          value: _saturation,
+          value: adj.saturation * 100,
           min: 0,
           max: 200,
           accent: AppColors.pink,
-          valueLabel: '${_saturation.round()}%',
-          onChanged: (v) => setState(() => _saturation = v),
+          valueLabel: '${(adj.saturation * 100).round()}%',
+          onChanged: (v) => update(adj.copyWith(saturation: v / 100)),
         ),
         LabeledSlider(
           label: 'Hue',
-          value: _hue,
+          value: adj.hue,
           min: -180,
           max: 180,
           accent: AppColors.violet,
-          valueLabel: '${_hue.round()}°',
-          onChanged: (v) => setState(() => _hue = v),
+          valueLabel: '${adj.hue.round()}°',
+          onChanged: (v) => update(adj.copyWith(hue: v)),
         ),
         LabeledSlider(
           label: 'Opacity',
-          value: _opacity,
+          value: selected.opacity * 100,
           min: 0,
           max: 100,
           accent: AppColors.green,
-          valueLabel: '${_opacity.round()}%',
-          onChanged: (v) => setState(() => _opacity = v),
+          valueLabel: '${(selected.opacity * 100).round()}%',
+          onChanged: (v) => _controller.setOpacity(id, v / 100),
         ),
       ],
     );
   }
 
-  Widget _textPanel() {
+  // ------------------------------------------------------------ Text
+  Widget _textPanel(EditorState editor) {
     const colors = [
       Colors.white,
       Color(0xFF111111),
@@ -330,17 +292,46 @@ class _EditorScreenState extends State<EditorScreen> {
       AppColors.rose,
       AppColors.orange,
     ];
+
+    final selected = editor.selectedLayer;
+    if (selected is! TextLayer) {
+      return Column(
+        children: [
+          _panelHeader(EditorTool.text),
+          _emptyHint('Select a text layer, or add one.'),
+          GradientButton(
+            label: 'Add text',
+            icon: Icons.add,
+            gradient: LinearGradient(
+              colors: [AppColors.pink, AppColors.pink.withValues(alpha: 0.7)],
+            ),
+            glowColor: AppColors.pink,
+            onPressed: () => _controller.addTextLayer(text: 'Woof!'),
+          ),
+        ],
+      );
+    }
+
+    // Sync the field to the selected layer only when the selection changes.
+    if (_editingTextId != selected.id) {
+      _editingTextId = selected.id;
+      _textController.value = TextEditingValue(
+        text: selected.text,
+        selection: TextSelection.collapsed(offset: selected.text.length),
+      );
+    }
+    final id = selected.id;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _panelHeader(
-          'Text',
-          SmAccent.text,
+          EditorTool.text,
           trailing: const _PanelHint('Tap a font to preview'),
         ),
         TextField(
           controller: _textController,
-          onChanged: (v) => setState(() => _textValue = v),
+          onChanged: (v) => _controller.updateTextLayer(id, text: v),
           style: const TextStyle(
             fontFamily: AppFonts.ui,
             color: AppColors.textPrimary,
@@ -377,18 +368,17 @@ class _EditorScreenState extends State<EditorScreen> {
             separatorBuilder: (_, _) => const SizedBox(width: 9),
             itemBuilder: (_, i) {
               final f = AppFonts.stickerFonts[i];
+              final active = selected.fontFamily == f;
               return PillChip(
                 label: f,
                 accent: AppColors.pink,
-                selected: _textFont == f,
+                selected: active,
                 radius: 12,
-                onTap: () => setState(() => _textFont = f),
+                onTap: () => _controller.updateTextLayer(id, fontFamily: f),
                 labelStyle: TextStyle(
                   fontFamily: f,
                   fontSize: 16,
-                  color: _textFont == f
-                      ? Colors.white
-                      : AppColors.textSecondary,
+                  color: active ? Colors.white : AppColors.textSecondary,
                 ),
               );
             },
@@ -397,13 +387,13 @@ class _EditorScreenState extends State<EditorScreen> {
         const SizedBox(height: 8),
         LabeledSlider(
           label: 'Size',
-          value: _textSize,
+          value: selected.fontSize,
           min: 16,
           max: 72,
           accent: AppColors.pink,
           valueColor: AppColors.textMuted,
-          valueLabel: '${_textSize.round()}px',
-          onChanged: (v) => setState(() => _textSize = v),
+          valueLabel: '${selected.fontSize.round()}px',
+          onChanged: (v) => _controller.updateTextLayer(id, fontSize: v),
         ),
         const SizedBox(height: 4),
         Wrap(
@@ -412,7 +402,7 @@ class _EditorScreenState extends State<EditorScreen> {
           children: [
             for (final c in colors)
               GestureDetector(
-                onTap: () => setState(() => _textColor = c),
+                onTap: () => _controller.updateTextLayer(id, color: c),
                 child: Container(
                   width: 34,
                   height: 34,
@@ -420,10 +410,10 @@ class _EditorScreenState extends State<EditorScreen> {
                     color: c,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: _textColor == c
+                      color: selected.color == c
                           ? Colors.white
                           : Colors.white.withValues(alpha: 0.15),
-                      width: _textColor == c ? 3 : 2,
+                      width: selected.color == c ? 3 : 2,
                     ),
                   ),
                 ),
@@ -434,7 +424,11 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  Widget _cutoutPanel() {
+  // ------------------------------------------------------------ Cut out
+  Widget _cutoutPanel(EditorState editor) {
+    final selected = editor.selectedLayer;
+    final image = selected is ImageLayer ? selected : null;
+    final removed = image?.maskPath != null;
     return Column(
       children: [
         const Padding(
@@ -449,46 +443,44 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.only(bottom: 16),
-          child: Text(
-            "One tap to isolate your pet. We'll auto-detect edges — refine "
-            'anything by hand in the Erase tool.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: AppFonts.ui,
-              fontSize: 12.5,
-              color: AppColors.textMuted,
-              height: 1.5,
-            ),
-          ),
+        _emptyHint(
+          image == null
+              ? 'Select a photo layer to cut out.\nOn-device AI removal lands in M2 (#26).'
+              : "One tap to isolate your pet. We'll auto-detect edges — refine "
+                    'anything by hand in the Erase tool.',
         ),
         GradientButton(
-          label: _bgRemoved ? 'Undo removal' : 'Remove background',
+          label: removed ? 'Undo removal' : 'Remove background',
           icon: Icons.auto_awesome,
-          gradient: _bgRemoved ? null : context.sm.cutoutGradient,
-          solidColor: _bgRemoved ? AppColors.neutralButton : null,
-          foreground: _bgRemoved
-              ? AppColors.textSecondary
-              : AppColors.cutoutInk,
+          gradient: removed ? null : context.sm.cutoutGradient,
+          solidColor: removed ? AppColors.neutralButton : null,
+          foreground: removed ? AppColors.textSecondary : AppColors.cutoutInk,
           glowColor: AppColors.green,
-          onPressed: () {
-            setState(() => _bgRemoved = !_bgRemoved);
-            _toast(_bgRemoved ? 'Background removed' : 'Background restored');
-          },
+          onPressed: image == null
+              ? null
+              : () {
+                  // Placeholder for the real M2 pipeline: toggle a mask marker.
+                  _controller.setImageMask(
+                    image.id,
+                    removed ? null : '${image.id}.mask',
+                  );
+                  _toast(
+                    removed ? 'Background restored' : 'Background removed',
+                  );
+                },
         ),
       ],
     );
   }
 
+  // ------------------------------------------------------------ Erase
   Widget _erasePanel() {
     final brushPreview = (_brushSize * 0.4).clamp(8.0, 40.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _panelHeader(
-          'Manual erase',
-          SmAccent.erase,
+          EditorTool.erase,
           trailing: const _PanelHint('Brush over the canvas'),
         ),
         Row(
@@ -568,13 +560,15 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  Widget _framesPanel() {
+  // ------------------------------------------------------------ Frames
+  Widget _framesPanel(EditorState editor) {
+    final frames = editor.project.frames;
+    final current = editor.project.currentFrameIndex;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _panelHeader(
-          'Animation frames',
-          SmAccent.frames,
+          EditorTool.frames,
           trailing: PillChip(
             label: _isPlaying ? 'Pause' : 'Play',
             icon: _isPlaying ? Icons.pause : Icons.play_arrow,
@@ -587,15 +581,16 @@ class _EditorScreenState extends State<EditorScreen> {
           height: 64,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: _frameCount + 1,
+            itemCount: frames.length + 1,
             separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (_, i) {
-              if (i == _frameCount) {
-                return _addFrameButton();
-              }
-              final active = i == _currentFrame;
+              if (i == frames.length) return _addFrameButton();
+              final active = i == current;
               return GestureDetector(
-                onTap: () => setState(() => _currentFrame = i),
+                onTap: () => _controller.selectFrame(i),
+                onLongPress: frames.length > 1
+                    ? () => _controller.deleteFrame(i)
+                    : null,
                 child: Container(
                   width: 64,
                   height: 64,
@@ -642,10 +637,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Widget _addFrameButton() {
     return GestureDetector(
-      onTap: () => setState(() {
-        _frameCount++;
-        _currentFrame = _frameCount - 1;
-      }),
+      onTap: _controller.addFrame,
       child: Container(
         width: 64,
         height: 64,
@@ -661,86 +653,41 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  Widget _layersPanel() {
-    final rows = [
-      ('WOOF!', 'Text layer', true),
-      ('Rex (photo)', 'Image layer', false),
-      ('Background', 'Image layer', false),
-    ];
+  // ------------------------------------------------------------ Layers
+  Widget _layersPanel(EditorState editor) {
+    final layers = editor.layers;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _panelHeader(
-          'Layers',
-          SmAccent.layers,
+          EditorTool.layers,
           trailing: PillChip(
             label: 'Add',
             icon: Icons.add,
-            onTap: () => _toast('Layer added'),
+            onTap: () => _controller.addTextLayer(),
           ),
         ),
-        for (final (name, type, isText) in rows)
-          Container(
-            margin: const EdgeInsets.only(bottom: 7),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.cardAlt,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: isText ? AppColors.elevated : null,
-                    gradient: isText ? null : context.sm.logoGradient,
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  child: isText
-                      ? const Text(
-                          'T',
-                          style: TextStyle(
-                            fontFamily: AppFonts.bangers,
-                            fontSize: 16,
-                            color: Colors.white,
-                          ),
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontFamily: AppFonts.ui,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      Text(
-                        type,
-                        style: const TextStyle(
-                          fontFamily: AppFonts.ui,
-                          fontSize: 10.5,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(
-                  Icons.visibility_outlined,
-                  size: 18,
-                  color: AppColors.textSecondary,
-                ),
-              ],
-            ),
+        if (layers.isEmpty)
+          _emptyHint('No layers yet. Add text, or import a photo (#21).')
+        else
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: layers.length,
+            onReorderItem: (oldIndex, newIndex) =>
+                _controller.reorderLayer(oldIndex, newIndex),
+            itemBuilder: (context, i) {
+              final layer = layers[i];
+              return _LayerRow(
+                key: ValueKey(layer.id),
+                layer: layer,
+                selected: editor.selectedLayerId == layer.id,
+                onSelect: () => _controller.selectLayer(layer.id),
+                onToggleVisibility: () =>
+                    _controller.toggleVisibility(layer.id),
+                onDelete: () => _controller.removeLayer(layer.id),
+              );
+            },
           ),
       ],
     );
@@ -770,42 +717,244 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   // ---------------------------------------------------------------- tool bar
-  Widget _toolBar() {
+  Widget _toolBar(EditorState editor) {
     return Container(
       decoration: const BoxDecoration(color: Color(0xFF141019)),
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
       child: Row(
         children: [
-          _tab('Layers', Icons.layers_outlined, SmAccent.layers),
-          _tab('Adjust', Icons.tune, SmAccent.adjust),
-          _tab('Text', Icons.text_fields, SmAccent.text),
-          _tab('Erase', Icons.brush_outlined, SmAccent.erase),
-          _tab('Cut out', Icons.auto_awesome_outlined, SmAccent.cutout),
-          _tab('Frames', Icons.animation, SmAccent.frames),
+          for (final tool in EditorTool.values)
+            ToolTab(
+              label: tool.tabLabel,
+              icon: tool.icon,
+              accent: context.sm.accent(tool.accent),
+              active: editor.tool == tool,
+              onTap: () => _controller.setTool(tool),
+            ),
         ],
       ),
     );
   }
+}
 
-  Widget _tab(String label, IconData icon, SmAccent accent) {
-    return ToolTab(
-      label: label,
-      icon: icon,
-      accent: context.sm.accent(accent),
-      active: _tool == accent,
-      onTap: () => setState(() => _tool = accent),
+class _LayerRow extends StatelessWidget {
+  const _LayerRow({
+    super.key,
+    required this.layer,
+    required this.selected,
+    required this.onSelect,
+    required this.onToggleVisibility,
+    required this.onDelete,
+  });
+
+  final Layer layer;
+  final bool selected;
+  final VoidCallback onSelect;
+  final VoidCallback onToggleVisibility;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final isText = layer is TextLayer;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onSelect,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: selected
+                  ? AppColors.violet.withValues(alpha: 0.14)
+                  : AppColors.cardAlt,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: selected ? AppColors.violet : Colors.transparent,
+                width: 1.5,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isText ? AppColors.elevated : null,
+                    gradient: isText ? null : context.sm.logoGradient,
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: isText
+                      ? const Text(
+                          'T',
+                          style: TextStyle(
+                            fontFamily: AppFonts.bangers,
+                            fontSize: 16,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.image_outlined,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        layer.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: AppFonts.ui,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        isText ? 'Text layer' : 'Image layer',
+                        style: const TextStyle(
+                          fontFamily: AppFonts.ui,
+                          fontSize: 10.5,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onToggleVisibility,
+                  icon: Icon(
+                    layer.visible
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    size: 18,
+                    color: layer.visible
+                        ? AppColors.textSecondary
+                        : AppColors.textFaint,
+                  ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onDelete,
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    size: 18,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CutBadge extends StatelessWidget {
+  const _CutBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: 12,
+      left: 12,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: AppColors.green.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.green.withValues(alpha: 0.5)),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check, size: 13, color: AppColors.greenLight),
+            SizedBox(width: 5),
+            Text(
+              'Cut out',
+              style: TextStyle(
+                fontFamily: AppFonts.ui,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.greenLight,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A static selection indicator drawn around the canvas while a layer is
+/// selected. Interactive drag handles arrive with gesture transforms (#19).
+class _SelectionFrame extends StatelessWidget {
+  const _SelectionFrame({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.cyan, width: 1.5),
+            ),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Transform.translate(
+                offset: const Offset(0, -10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.cyan,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    name,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.ui,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF06121A),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
+    required this.title,
     required this.onBack,
     required this.onExport,
     required this.onUndo,
     required this.onRedo,
   });
 
+  final String title;
   final VoidCallback onBack;
   final VoidCallback onExport;
   final VoidCallback onUndo;
@@ -825,22 +974,22 @@ class _TopBar extends StatelessWidget {
               color: AppColors.textSecondary,
             ),
           ),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Rex woof',
+                  title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontFamily: AppFonts.display,
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
                     color: AppColors.textPrimary,
                   ),
                 ),
-                Text(
+                const Text(
                   '512 × 512 · transparent',
                   style: TextStyle(
                     fontFamily: AppFonts.ui,
