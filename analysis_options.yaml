@@ -1,0 +1,36 @@
+# Static analysis configuration. Run with `flutter analyze`.
+# Base: the recommended Flutter lint set, extended with a curated stricter set
+# suitable for a production app. See docs/DEVELOPMENT.md.
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-raw-types: true
+  errors:
+    # Promote a few high-signal lints to warnings/errors for CI.
+    todo: ignore
+    missing_required_param: error
+    missing_return: error
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - "build/**"
+
+linter:
+  rules:
+    - always_declare_return_types
+    - avoid_redundant_argument_values
+    - avoid_unused_constructor_parameters
+    - directives_ordering
+    - prefer_const_constructors
+    - prefer_const_constructors_in_immutables
+    - prefer_const_declarations
+    - prefer_final_locals
+    - prefer_single_quotes
+    - require_trailing_commas
+    - sized_box_for_whitespace
+    - sort_child_properties_last
+    - unawaited_futures
+    - unnecessary_parenthesis
+    - use_super_parameters

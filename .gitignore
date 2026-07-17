@@ -3,20 +3,36 @@ Thumbs.db
 .DS_Store
 Desktop.ini
 
-# IDE
+# IDE / tooling
 .idea/
 .vscode/
 *.iml
+*.log
+.claude/
 
-# Flutter/Dart (scaffold in M0 will extend this)
+# Flutter / Dart
 .dart_tool/
 .packages
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
+# Note: pubspec.lock IS committed (application package → reproducible builds).
 
-# Secrets / signing
+# Android
+android/.gradle/
+android/local.properties
+android/key.properties
+android/app/upload-keystore.jks
+android/.kotlin/
 *.keystore
 *.jks
+
+# iOS (added in M8)
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+
+# Secrets
 key.properties
 .env
