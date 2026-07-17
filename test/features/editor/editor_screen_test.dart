@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,17 +9,22 @@ import 'package:sticker_maker/core/models/sticker_project.dart';
 import 'package:sticker_maker/core/theme/app_theme.dart';
 import 'package:sticker_maker/features/editor/editor_screen.dart';
 import 'package:sticker_maker/features/editor/state/editor_controller.dart';
+import 'package:sticker_maker/features/home/project_repository.dart';
+
+late Directory _tempDir;
 
 Future<void> pumpEditor(WidgetTester tester, {StickerProject? project}) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: project == null
-          ? const []
-          : [
-              editorControllerProvider.overrideWith(
-                () => EditorController(project),
-              ),
-            ],
+      overrides: [
+        projectRepositoryProvider.overrideWithValue(
+          ProjectRepository(baseDir: _tempDir),
+        ),
+        if (project != null)
+          editorControllerProvider.overrideWith(
+            () => EditorController(project),
+          ),
+      ],
       child: MaterialApp(
         theme: buildStickerTheme(),
         home: const EditorScreen(),
@@ -42,6 +49,7 @@ StickerProject oneTextProject() => const StickerProject(
 
 void main() {
   setUp(() {
+    _tempDir = Directory.systemTemp.createTempSync('sm_editor_');
     final view = TestWidgetsFlutterBinding.ensureInitialized()
         .platformDispatcher
         .views
@@ -50,6 +58,7 @@ void main() {
     view.devicePixelRatio = 2.0;
   });
   tearDown(() {
+    if (_tempDir.existsSync()) _tempDir.deleteSync(recursive: true);
     final view = TestWidgetsFlutterBinding.ensureInitialized()
         .platformDispatcher
         .views

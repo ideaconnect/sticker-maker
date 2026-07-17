@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../app/router.dart';
 import '../../core/models/image_adjustments.dart';
 import '../../core/models/layer.dart';
+import '../../core/models/sticker_project.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
@@ -16,6 +18,7 @@ import '../../core/widgets/labeled_slider.dart';
 import '../../core/widgets/pill_chip.dart';
 import '../../core/widgets/sm_toast.dart';
 import '../../core/widgets/tool_tab.dart';
+import '../home/project_repository.dart';
 import 'services/image_import.dart';
 import 'state/editor_controller.dart';
 import 'state/editor_state.dart';
@@ -44,6 +47,12 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   bool _softEdges = true;
   double _brushSize = 40;
 
+  Timer? _saveTimer;
+  StickerProject? _pendingSave;
+  // Captured during build so dispose() can save without touching `ref`
+  // (which is unsafe once the widget is unmounting).
+  ProjectRepository? _repo;
+
   EditorController get _controller =>
       ref.read(editorControllerProvider.notifier);
 
@@ -52,8 +61,28 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   /// Closes the current undo step when a slider drag ends.
   void _endSliderEdit(double _) => _controller.endEdit();
 
+  /// Debounced auto-save of the document to disk.
+  void _scheduleSave(StickerProject project) {
+    _pendingSave = project;
+    _saveTimer?.cancel();
+    _saveTimer = Timer(
+      const Duration(milliseconds: 800),
+      () => _flushSave(refreshHome: true),
+    );
+  }
+
+  void _flushSave({bool refreshHome = false}) {
+    final project = _pendingSave;
+    if (project == null) return;
+    _pendingSave = null;
+    _repo?.save(project.copyWith(updatedAt: DateTime.now()));
+    if (refreshHome && mounted) ref.invalidate(savedProjectsProvider);
+  }
+
   @override
   void dispose() {
+    _saveTimer?.cancel();
+    _flushSave(); // persist any pending edit on the way out (no ref use)
     _textController.dispose();
     super.dispose();
   }
@@ -61,6 +90,12 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   @override
   Widget build(BuildContext context) {
     final editor = ref.watch(editorControllerProvider);
+    _repo = ref.read(projectRepositoryProvider);
+    ref.listen(editorControllerProvider, (prev, next) {
+      if (prev == null || prev.project != next.project) {
+        _scheduleSave(next.project);
+      }
+    });
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(

@@ -1,11 +1,17 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sticker_maker/app/app.dart';
+import 'package:sticker_maker/core/models/sticker_project.dart';
+import 'package:sticker_maker/features/home/project_repository.dart';
 
 void main() {
-  // Exercise layout at the design's target phone size (412 x 892 @ 2x).
+  late Directory tempDir;
+
   setUp(() {
+    tempDir = Directory.systemTemp.createTempSync('sm_test_');
     final view = TestWidgetsFlutterBinding.ensureInitialized()
         .platformDispatcher
         .views
@@ -15,6 +21,7 @@ void main() {
   });
 
   tearDown(() {
+    if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
     final view = TestWidgetsFlutterBinding.ensureInitialized()
         .platformDispatcher
         .views
@@ -23,9 +30,24 @@ void main() {
     view.resetDevicePixelRatio();
   });
 
-  testWidgets('Home screen renders brand and primary action', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: StickerMakerApp()));
+  Future<void> pumpApp(WidgetTester tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          projectRepositoryProvider.overrideWithValue(
+            ProjectRepository(baseDir: tempDir),
+          ),
+          // Resolve immediately so pumpAndSettle doesn't hang on real file IO.
+          savedProjectsProvider.overrideWith((ref) => <StickerProject>[]),
+        ],
+        child: const StickerMakerApp(),
+      ),
+    );
     await tester.pumpAndSettle();
+  }
+
+  testWidgets('Home screen renders brand and primary action', (tester) async {
+    await pumpApp(tester);
 
     expect(find.text('Sticker Maker'), findsOneWidget);
     expect(find.text('New Sticker'), findsOneWidget);
@@ -33,13 +55,12 @@ void main() {
   });
 
   testWidgets('New Sticker navigates to the editor', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: StickerMakerApp()));
-    await tester.pumpAndSettle();
+    await pumpApp(tester);
 
     await tester.tap(find.text('New Sticker'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Rex woof'), findsOneWidget);
+    expect(find.text('512 × 512 · transparent'), findsOneWidget);
     expect(find.text('Cut out'), findsOneWidget);
     expect(find.text('Export'), findsOneWidget);
   });
@@ -47,8 +68,7 @@ void main() {
   testWidgets('Editor Export button navigates to the export screen', (
     tester,
   ) async {
-    await tester.pumpWidget(const ProviderScope(child: StickerMakerApp()));
-    await tester.pumpAndSettle();
+    await pumpApp(tester);
 
     await tester.tap(find.text('New Sticker'));
     await tester.pumpAndSettle();
@@ -62,8 +82,7 @@ void main() {
   testWidgets('Editor back button pops to Home (real back stack)', (
     tester,
   ) async {
-    await tester.pumpWidget(const ProviderScope(child: StickerMakerApp()));
-    await tester.pumpAndSettle();
+    await pumpApp(tester);
 
     await tester.tap(find.text('New Sticker'));
     await tester.pumpAndSettle();

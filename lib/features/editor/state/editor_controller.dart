@@ -102,6 +102,28 @@ class EditorController extends Notifier<EditorState> {
   /// fresh undo step.
   void endEdit() => _coalesceKey = null;
 
+  /// Replaces the current document (e.g. opening a saved project), resetting
+  /// history. Bumps the id counter past any loaded ids to avoid collisions.
+  void loadProject(StickerProject project) {
+    _undoStack.clear();
+    _redoStack.clear();
+    _coalesceKey = null;
+    for (final frame in project.frames) {
+      _bumpSeqPast(frame.id);
+      for (final layer in frame.layers) {
+        _bumpSeqPast(layer.id);
+      }
+    }
+    state = EditorState(project: project);
+  }
+
+  void _bumpSeqPast(String id) {
+    final i = id.lastIndexOf('_');
+    if (i < 0) return;
+    final n = int.tryParse(id.substring(i + 1));
+    if (n != null && n >= _seq) _seq = n + 1;
+  }
+
   // ------------------------------------------------------------ UI state
   void setTool(EditorTool tool) {
     _coalesceKey = null;

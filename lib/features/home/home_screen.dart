@@ -1,21 +1,55 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
+import '../../core/models/sticker_project.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
 import '../../core/widgets/checkerboard.dart';
+import '../editor/state/editor_controller.dart';
+import '../editor/widgets/sticker_canvas.dart';
+import 'project_repository.dart';
 
 /// Home screen: brand header, the "New Sticker" hero action, quickstart chips
-/// and a grid of recent stickers. Mirrors the Home screen in the design.
-class HomeScreen extends StatelessWidget {
+/// and a grid of the user's saved stickers (from [savedProjectsProvider]).
+class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
+  void _newProject(BuildContext context, WidgetRef ref) {
+    final project = StickerProject.empty(
+      id: 'sm_${DateTime.now().microsecondsSinceEpoch}',
+      createdAt: DateTime.now(),
+    );
+    ref.read(editorControllerProvider.notifier).loadProject(project);
+    context.pushNamed(Routes.editor);
+    // Persist in the background so it appears in the Recent grid.
+    unawaited(_persist(ref, project));
+  }
+
+  Future<void> _persist(WidgetRef ref, StickerProject project) async {
+    await ref.read(projectRepositoryProvider).save(project);
+    ref.invalidate(savedProjectsProvider);
+  }
+
+  void _openProject(BuildContext context, WidgetRef ref, StickerProject p) {
+    ref.read(editorControllerProvider.notifier).loadProject(p);
+    context.pushNamed(Routes.editor);
+  }
+
+  Future<void> _deleteProject(WidgetRef ref, String id) async {
+    await ref.read(projectRepositoryProvider).delete(id);
+    ref.invalidate(savedProjectsProvider);
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final tokens = context.sm;
     final textTheme = Theme.of(context).textTheme;
+    final projectsAsync = ref.watch(savedProjectsProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -24,7 +58,7 @@ class HomeScreen extends StatelessWidget {
           children: [
             _Header(),
             const SizedBox(height: 16),
-            _NewStickerCard(onTap: () => context.pushNamed(Routes.editor)),
+            _NewStickerCard(onTap: () => _newProject(context, ref)),
             const SizedBox(height: 14),
             Row(
               children: [
@@ -33,7 +67,7 @@ class HomeScreen extends StatelessWidget {
                     label: 'From photo',
                     icon: Icons.image_outlined,
                     accent: AppColors.violet,
-                    onTap: () => context.pushNamed(Routes.editor),
+                    onTap: () => _newProject(context, ref),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -42,7 +76,7 @@ class HomeScreen extends StatelessWidget {
                     label: 'Templates',
                     icon: Icons.auto_awesome,
                     accent: AppColors.pink,
-                    onTap: () => context.pushNamed(Routes.editor),
+                    onTap: () => _newProject(context, ref),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -51,7 +85,7 @@ class HomeScreen extends StatelessWidget {
                     label: 'Blank',
                     icon: Icons.add,
                     accent: AppColors.cyan,
-                    onTap: () => context.pushNamed(Routes.editor),
+                    onTap: () => _newProject(context, ref),
                   ),
                 ),
               ],
@@ -68,21 +102,31 @@ class HomeScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
-              childAspectRatio: 0.82,
-              children: [
-                for (final p in _sampleProjects)
-                  _ProjectCard(
-                    project: p,
-                    radius: tokens.radiusCard,
-                    onTap: () => context.pushNamed(Routes.editor),
-                  ),
-              ],
+            projectsAsync.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (_, _) => const _EmptyRecent(),
+              data: (projects) => projects.isEmpty
+                  ? const _EmptyRecent()
+                  : GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 14,
+                      crossAxisSpacing: 14,
+                      childAspectRatio: 0.82,
+                      children: [
+                        for (final p in projects)
+                          _ProjectCard(
+                            project: p,
+                            radius: tokens.radiusCard,
+                            onTap: () => _openProject(context, ref, p),
+                            onDelete: () => _deleteProject(ref, p.id),
+                          ),
+                      ],
+                    ),
             ),
           ],
         ),
@@ -299,20 +343,30 @@ class _ProjectCard extends StatelessWidget {
     required this.project,
     required this.radius,
     required this.onTap,
+    required this.onDelete,
   });
 
-  final _SampleProject project;
+  final StickerProject project;
   final double radius;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    final isGif = project.kind == 'GIF';
+    final isGif = project.isAnimated;
+    final layerCount = project.frames.isEmpty
+        ? 0
+        : project.frames.first.layers.length;
+    final count = isGif
+        ? '${project.frameCount} frames'
+        : '$layerCount ${layerCount == 1 ? 'layer' : 'layers'}';
+
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
         borderRadius: BorderRadius.circular(radius),
         onTap: onTap,
+        onLongPress: () => _confirmDelete(context),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: AppColors.card,
@@ -331,32 +385,8 @@ class _ProjectCard extends StatelessWidget {
                     fit: StackFit.expand,
                     children: [
                       const Checkerboard(cell: 9),
-                      Center(
-                        child: FractionallySizedBox(
-                          widthFactor: 0.46,
-                          heightFactor: 0.46,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  project.hue,
-                                  project.hue.withValues(alpha: 0.35),
-                                ],
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: project.hue.withValues(alpha: 0.4),
-                                  blurRadius: 18,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                      if (project.frames.isNotEmpty)
+                        StickerCanvas(frame: project.frames.first),
                       Positioned(
                         top: 8,
                         right: 8,
@@ -370,7 +400,7 @@ class _ProjectCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            project.kind,
+                            isGif ? 'GIF' : 'PNG',
                             style: TextStyle(
                               fontFamily: AppFonts.ui,
                               fontSize: 9.5,
@@ -405,7 +435,7 @@ class _ProjectCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      project.count,
+                      count,
                       style: const TextStyle(
                         fontFamily: AppFonts.ui,
                         fontSize: 11,
@@ -421,19 +451,77 @@ class _ProjectCard extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.panel,
+        title: Text(
+          'Delete "${project.name}"?',
+          style: const TextStyle(
+            fontFamily: AppFonts.display,
+            color: AppColors.textPrimary,
+            fontSize: 17,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: AppColors.rose),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok ?? false) onDelete();
+  }
 }
 
-class _SampleProject {
-  const _SampleProject(this.name, this.kind, this.count, this.hue);
-  final String name;
-  final String kind;
-  final String count;
-  final Color hue;
-}
+class _EmptyRecent extends StatelessWidget {
+  const _EmptyRecent();
 
-const _sampleProjects = <_SampleProject>[
-  _SampleProject('Rex woof', 'GIF', '6 frames', AppColors.violet),
-  _SampleProject('Sleepy cat', 'PNG', '1 layer', AppColors.cyan),
-  _SampleProject('Party pug', 'GIF', '8 frames', AppColors.pink),
-  _SampleProject('Good boy', 'PNG', '3 layers', AppColors.green),
-];
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(vertical: 44, horizontal: 20),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderFaint),
+      ),
+      child: const Column(
+        children: [
+          Icon(Icons.auto_awesome, size: 34, color: AppColors.violetLight),
+          SizedBox(height: 12),
+          Text(
+            'No stickers yet',
+            style: TextStyle(
+              fontFamily: AppFonts.display,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          SizedBox(height: 4),
+          Text(
+            'Tap New Sticker to make your first one.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: AppFonts.ui,
+              fontSize: 12.5,
+              color: AppColors.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
