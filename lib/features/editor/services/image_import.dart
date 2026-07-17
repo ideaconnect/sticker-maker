@@ -60,6 +60,16 @@ class ImageImportService {
     return dest;
   }
 
+  /// Copies an image at [path] (e.g. a file shared from another app) into the
+  /// project assets directory.
+  Future<String> storeFilePath(String path) async {
+    final assets = await _assetsDir();
+    final ext = path.contains('.') ? path.split('.').last : 'png';
+    final dest = '${assets.path}/img_${_stamp()}.$ext';
+    await File(path).copy(dest);
+    return dest;
+  }
+
   Future<Directory> _assetsDir() async {
     final base = await getApplicationDocumentsDirectory();
     final assets = Directory('${base.path}/projects/assets');
