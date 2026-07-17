@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'engines/bundled/bundled_segmentation_engine.dart';
 import 'engines/mlkit_segmentation_engine.dart';
 import 'segmentation_engine.dart';
 
@@ -57,6 +58,8 @@ final segmentationRegistryProvider = Provider<SegmentationRegistry>((ref) {
   return SegmentationRegistry([
     if (defaultTargetPlatform == TargetPlatform.android)
       MlKitSegmentationEngine(),
-    // BundledSegmentationEngine() — added in #28.
+    // Bundled U²-Netp fallback (#28). isAvailable() is false until the `.onnx`
+    // weights ship in assets/models/, so this stays inert until then.
+    BundledSegmentationEngine(),
   ]);
 });

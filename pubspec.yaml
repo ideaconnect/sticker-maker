@@ -40,6 +40,8 @@ dependencies:
   path_provider: ^2.1.6
   pasteboard: ^0.5.0
   google_mlkit_subject_segmentation: ^0.1.0
+  flutter_onnxruntime: ^1.8.2
+  image: ^4.9.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -64,6 +66,9 @@ flutter:
 
   assets:
     - assets/branding/
+    # On-device segmentation fallback weights (#28). The .onnx is added
+    # out-of-band (see assets/models/README.md); the dir ships regardless.
+    - assets/models/
 
   # Bundled OFL/Apache fonts (offline; see assets/fonts/ for license files).
   fonts:
