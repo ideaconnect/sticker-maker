@@ -11,20 +11,22 @@ The following **architecture** findings were intentionally deferred to **M1**, b
 the editor engine and data model are built (issues #17–#24). Doing them in M0 and rewriting them in
 M1 would be waste. They are recorded here so they are not lost.
 
-## D1 — Introduce the Riverpod state/domain layer (blocks: #17, #20)
+## D1 — Introduce the Riverpod state/domain layer (blocks: #17, #20) — ✅ foundation done
 
-`ProviderScope` is installed but unused; `_EditorScreenState` holds ~19 flat `setState` fields with
-no `StickerDocument`/`Layer` model, and Undo/Redo are wired to toasts. **M1 must** introduce an
-immutable document model + a Riverpod `EditorController`, and convert `EditorScreen` to a
-`ConsumerWidget`. Lock in immutable snapshots so undo/redo (issue #20) can be layered on cheaply.
-Until then the Undo/Redo buttons are placeholders (show a toast) — acceptable for the M0 shell.
+**Resolved (foundation):** `lib/features/editor/state/` now has an immutable `EditorState`
+(project + selected layer + tool) and a Riverpod `EditorController` (`Notifier`) that owns the
+`StickerProject` and drives every mutation through immutable `copyWith`, with 16 unit tests.
+Immutable snapshots are in place so undo/redo (#20) can be layered on cheaply.
+**Still pending:** converting `EditorScreen` from `~19 setState` fields to a `ConsumerWidget` that
+watches the controller (the UI-wiring step, done alongside #18/#22/#23). Until then the on-screen
+Undo/Redo buttons remain placeholders.
 
-## D2 — Extract an `EditorTool` domain enum (blocks: #17)
+## D2 — Extract an `EditorTool` domain enum (blocks: #17) — ✅ done
 
-The tool set is currently modeled by `SmAccent` (a theme/color enum) in the theme layer, with tool
-label/icon hardcoded again in the tool bar. M1 should introduce an `EditorTool` value type
-(carrying `tabLabel`, `panelTitle`, `icon`, `accent`) as the single source of truth, and reduce
-`SmAccent` to a pure color key. Drive the tool bar and panel switch from one ordered list.
+**Resolved:** `lib/features/editor/state/editor_tool.dart` defines `EditorTool` (carrying
+`tabLabel`, `panelTitle`, `icon`, `accent`) as the single source of truth; `SmAccent` stays a pure
+color key in the theme layer. The tool bar / panel switch will be driven from this enum when the
+editor UI is wired to the controller.
 
 ## D3 — Centralize fixture data + shared models (blocks: #17, #1.8)
 
