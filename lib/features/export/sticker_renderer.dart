@@ -204,7 +204,10 @@ abstract final class StickerRenderer {
     // Emoji / props (#61) render as a plain glyph — no caption stroke/shadow.
     if (layer.decorative) {
       final glyph = TextPainter(
-        text: TextSpan(text: layer.text, style: style.copyWith(color: layer.color)),
+        text: TextSpan(
+          text: layer.text,
+          style: style.copyWith(color: layer.color),
+        ),
         textDirection: TextDirection.ltr,
       )..layout();
       glyph.paint(canvas, Offset(-glyph.width / 2, -glyph.height / 2));

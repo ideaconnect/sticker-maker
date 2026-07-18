@@ -614,8 +614,11 @@ class _EmptyPack extends StatelessWidget {
       ),
       child: const Column(
         children: [
-          Icon(Icons.add_photo_alternate_outlined,
-              size: 30, color: AppColors.violetLight),
+          Icon(
+            Icons.add_photo_alternate_outlined,
+            size: 30,
+            color: AppColors.violetLight,
+          ),
           SizedBox(height: 10),
           Text(
             'No stickers in this pack',

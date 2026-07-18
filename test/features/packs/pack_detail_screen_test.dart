@@ -30,8 +30,11 @@ class _FakePackRepository extends PackRepository {
   Future<void> delete(String id) async => _store.remove(id);
 }
 
-StickerProject _project(String id, String name) =>
-    StickerProject(id: id, name: name, frames: [Frame(id: '${id}_f0')]);
+StickerProject _project(String id, String name) => StickerProject(
+  id: id,
+  name: name,
+  frames: [Frame(id: '${id}_f0')],
+);
 
 PackSticker _sticker(String projectId, {List<String> emojis = const []}) =>
     PackSticker(id: 'ps_$projectId', projectId: projectId, emojis: emojis);
@@ -146,8 +149,7 @@ void main() {
     expect(find.text('+ Add emoji tags'), findsNothing);
 
     final saved = await repo.load('pack1');
-    final bella =
-        saved!.stickers.firstWhere((s) => s.projectId == 'p_bella');
+    final bella = saved!.stickers.firstWhere((s) => s.projectId == 'p_bella');
     expect(bella.emojis, ['🎉']);
   });
 

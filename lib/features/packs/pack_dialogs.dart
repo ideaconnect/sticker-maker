@@ -50,8 +50,9 @@ class _NameDialog extends StatefulWidget {
 }
 
 class _NameDialogState extends State<_NameDialog> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.initial);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial,
+  );
 
   @override
   void dispose() {
@@ -115,11 +116,21 @@ class _EmojiDialog extends StatefulWidget {
 
 class _EmojiDialogState extends State<_EmojiDialog> {
   static const _quick = [
-    '😀', '❤️', '😂', '🔥', '👍', '🐶', '🐱', '🎉', '😎', '🙌',
+    '😀',
+    '❤️',
+    '😂',
+    '🔥',
+    '👍',
+    '🐶',
+    '🐱',
+    '🎉',
+    '😎',
+    '🙌',
   ];
 
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.initial.join(' '));
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial.join(' '),
+  );
 
   @override
   void dispose() {

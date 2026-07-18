@@ -171,4 +171,53 @@ void main() {
     expect(find.text('No stickers yet'), findsNothing);
     expect(find.text('Untitled'), findsWidgets);
   });
+
+  testWidgets('Templates quickstart applies a template into the editor', (
+    tester,
+  ) async {
+    await launchApp(tester);
+
+    await tester.tap(find.text('Templates'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pick a look — add your photo after.'), findsOneWidget);
+
+    await tester.tap(find.text('Woof!')); // card label; preview renders WOOF!
+    await tester.pumpAndSettle();
+
+    expect(find.text('512 × 512 · transparent'), findsOneWidget);
+    expect(find.text('WOOF!'), findsWidgets);
+  });
+
+  testWidgets('a comic bubble can be added from the editor', (tester) async {
+    await launchApp(tester);
+    await openNewSticker(tester);
+
+    await tester.tap(find.text('Layers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add bubble'));
+    await tester.pumpAndSettle();
+
+    // Jumped into the bubble editor with the default caption on the canvas.
+    expect(find.text('Comic bubble'), findsOneWidget);
+    expect(find.text('Woof!'), findsWidgets);
+  });
+
+  testWidgets('Frames: adding a frame makes the project animated', (
+    tester,
+  ) async {
+    await launchApp(tester);
+    await openNewSticker(tester);
+
+    await tester.tap(find.text('Frames'));
+    await tester.pumpAndSettle();
+    expect(find.text('Animation frames'), findsOneWidget);
+
+    // Add a second frame via the strip's + button → project is now animated,
+    // so the on-canvas frame counter appears.
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('/ 2'), findsWidgets);
+  });
 }

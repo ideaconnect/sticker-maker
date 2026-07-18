@@ -28,7 +28,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       gradient: AppColors.logoGradient,
       glow: AppColors.violetBright,
       title: 'Make it yours',
-      body: 'Start from any photo of your pet or a friend. '
+      body:
+          'Start from any photo of your pet or a friend. '
           'Add text, comic bubbles, and props to make it pop.',
     ),
     _Page(
@@ -36,7 +37,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       gradient: AppColors.cutoutGradient,
       glow: AppColors.green,
       title: 'Cut out the background',
-      body: 'One tap lifts your subject off its background — '
+      body:
+          'One tap lifts your subject off its background — '
           'processed on your device, so your photos never leave your phone.',
     ),
     _Page(
@@ -44,7 +46,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       gradient: AppColors.heroGradient,
       glow: AppColors.pink,
       title: 'Send it anywhere',
-      body: 'Share to WhatsApp or Telegram, or save a transparent PNG or GIF. '
+      body:
+          'Share to WhatsApp or Telegram, or save a transparent PNG or GIF. '
           'No ads, no watermarks, no upsells — ever.',
     ),
   ];
@@ -225,9 +228,7 @@ class _Dots extends StatelessWidget {
             width: i == active ? 22 : 8,
             height: 8,
             decoration: BoxDecoration(
-              color: i == active
-                  ? AppColors.violetLight
-                  : AppColors.elevated,
+              color: i == active ? AppColors.violetLight : AppColors.elevated,
               borderRadius: BorderRadius.circular(4),
             ),
           ),

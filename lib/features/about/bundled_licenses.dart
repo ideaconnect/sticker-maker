@@ -19,10 +19,9 @@ const bundledLicenses = <BundledLicense>[
   BundledLicense(['Plus Jakarta Sans'], 'assets/fonts/OFL-PlusJakartaSans.txt'),
   BundledLicense(['Fredoka'], 'assets/fonts/OFL-Fredoka.txt'),
   BundledLicense(['Bangers'], 'assets/fonts/OFL-Bangers.txt'),
-  BundledLicense(
-    ['Luckiest Guy'],
-    'assets/fonts/LICENSE-LuckiestGuy-Apache.txt',
-  ),
+  BundledLicense([
+    'Luckiest Guy',
+  ], 'assets/fonts/LICENSE-LuckiestGuy-Apache.txt'),
   BundledLicense(['Pacifico'], 'assets/fonts/OFL-Pacifico.txt'),
   BundledLicense(['Rubik'], 'assets/fonts/OFL-Rubik.txt'),
 ];

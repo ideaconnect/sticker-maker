@@ -36,8 +36,9 @@ class LicensesScreen extends StatelessWidget {
                   for (final category in categories) ...[
                     _SectionHeader(category),
                     const SizedBox(height: 10),
-                    for (final n
-                        in licenseNotices.where((n) => n.category == category))
+                    for (final n in licenseNotices.where(
+                      (n) => n.category == category,
+                    ))
                       _NoticeCard(n),
                     const SizedBox(height: 18),
                   ],

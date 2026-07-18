@@ -11,7 +11,10 @@ void main() {
       expect(codes, containsAll(<String>['en', 'pl']));
       expect(AppLocalizations.delegate.isSupported(const Locale('en')), isTrue);
       expect(AppLocalizations.delegate.isSupported(const Locale('pl')), isTrue);
-      expect(AppLocalizations.delegate.isSupported(const Locale('fr')), isFalse);
+      expect(
+        AppLocalizations.delegate.isSupported(const Locale('fr')),
+        isFalse,
+      );
     });
 
     test('English strings load from the template ARB', () async {
@@ -38,8 +41,7 @@ void main() {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: Builder(
-          builder: (context) =>
-              Text(AppLocalizations.of(context).newSticker),
+          builder: (context) => Text(AppLocalizations.of(context).newSticker),
         ),
       ),
     );

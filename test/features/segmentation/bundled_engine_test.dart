@@ -49,9 +49,7 @@ void main() {
         segmenterFactory: (_) async => fake,
       );
 
-      final result = await engine.segment(
-        SegmentationRequest(imagePath: path),
-      );
+      final result = await engine.segment(SegmentationRequest(imagePath: path));
 
       expect(result.engineId, 'bundled');
       // Pre-processing packed a [1,3,2,2] NCHW tensor (12 floats).
