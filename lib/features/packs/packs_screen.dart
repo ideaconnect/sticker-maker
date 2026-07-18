@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/widgets/responsive_center.dart';
 import '../export/compliance_validator.dart';
 import 'pack_dialogs.dart';
 import 'pack_repository.dart';
@@ -21,7 +22,9 @@ class PacksScreen extends ConsumerWidget {
     final name = await promptPackName(context);
     if (name == null || !context.mounted) return;
     final id = 'pack_${DateTime.now().microsecondsSinceEpoch}';
-    await ref.read(packRepositoryProvider).save(StickerPack(id: id, name: name));
+    await ref
+        .read(packRepositoryProvider)
+        .save(StickerPack(id: id, name: name));
     ref.invalidate(savedPacksProvider);
     if (context.mounted) {
       unawaited(
@@ -39,46 +42,48 @@ class PacksScreen extends ConsumerWidget {
           children: [
             _topBar(context),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                children: [
-                  _NewPackCard(onTap: () => _createPack(context, ref)),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'YOUR PACKS',
-                    style: TextStyle(
-                      fontFamily: AppFonts.ui,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.4,
-                      color: AppColors.textMuted,
+              child: ResponsiveCenter(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                  children: [
+                    _NewPackCard(onTap: () => _createPack(context, ref)),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'YOUR PACKS',
+                      style: TextStyle(
+                        fontFamily: AppFonts.ui,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                        color: AppColors.textMuted,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  packsAsync.when(
-                    loading: () => const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 40),
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                    error: (_, _) => const _EmptyPacks(),
-                    data: (packs) => packs.isEmpty
-                        ? const _EmptyPacks()
-                        : Column(
-                            children: [
-                              for (final p in packs) ...[
-                                _PackRow(
-                                  pack: p,
-                                  onTap: () => context.pushNamed(
-                                    Routes.packDetail,
-                                    pathParameters: {'id': p.id},
+                    const SizedBox(height: 12),
+                    packsAsync.when(
+                      loading: () => const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 40),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                      error: (_, _) => const _EmptyPacks(),
+                      data: (packs) => packs.isEmpty
+                          ? const _EmptyPacks()
+                          : Column(
+                              children: [
+                                for (final p in packs) ...[
+                                  _PackRow(
+                                    pack: p,
+                                    onTap: () => context.pushNamed(
+                                      Routes.packDetail,
+                                      pathParameters: {'id': p.id},
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 10),
+                                  const SizedBox(height: 10),
+                                ],
                               ],
-                            ],
-                          ),
-                  ),
-                ],
+                            ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -200,8 +205,9 @@ class _PackRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // A pack is share-ready when it has no blocking WhatsApp issues.
-    final ready =
-        pack.validate().every((i) => i.severity != IssueSeverity.error);
+    final ready = pack.validate().every(
+      (i) => i.severity != IssueSeverity.error,
+    );
     final accent = pack.animated ? AppColors.orange : AppColors.cyan;
     return Material(
       type: MaterialType.transparency,
@@ -226,7 +232,9 @@ class _PackRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  pack.animated ? Icons.gif_box_outlined : Icons.grid_view_rounded,
+                  pack.animated
+                      ? Icons.gif_box_outlined
+                      : Icons.grid_view_rounded,
                   size: 21,
                   color: accent,
                 ),

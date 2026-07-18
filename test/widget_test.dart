@@ -88,6 +88,22 @@ void main() {
     expect(find.text('WhatsApp'), findsOneWidget);
   });
 
+  testWidgets('Home constrains content width on a wide (tablet) screen', (
+    tester,
+  ) async {
+    final view = TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .views
+        .first;
+    view.physicalSize = const Size(2800, 2000); // 1400×1000 logical @2x
+    view.devicePixelRatio = 2.0;
+
+    await pumpApp(tester);
+
+    // ResponsiveCenter caps the Home list at 560 rather than stretching to 1400.
+    expect(tester.getSize(find.byType(ListView)).width, lessThanOrEqualTo(560));
+  });
+
   testWidgets('Home "See all" opens the all-stickers screen', (tester) async {
     await pumpApp(tester);
 

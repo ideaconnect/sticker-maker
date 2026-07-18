@@ -10,6 +10,7 @@ import '../../core/models/sticker_project.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
+import '../../core/widgets/responsive_center.dart';
 import '../about/about_sheet.dart';
 import '../editor/state/editor_controller.dart';
 import '../templates/template_picker.dart';
@@ -74,97 +75,99 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
-          children: [
-            _Header(),
-            const SizedBox(height: 16),
-            _NewStickerCard(onTap: () => _newProject(context, ref)),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: _QuickChip(
-                    label: 'From photo',
-                    icon: Icons.image_outlined,
-                    accent: AppColors.violet,
-                    onTap: () => _newProject(context, ref),
+        child: ResponsiveCenter(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+            children: [
+              _Header(),
+              const SizedBox(height: 16),
+              _NewStickerCard(onTap: () => _newProject(context, ref)),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _QuickChip(
+                      label: 'From photo',
+                      icon: Icons.image_outlined,
+                      accent: AppColors.violet,
+                      onTap: () => _newProject(context, ref),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _QuickChip(
-                    label: 'Templates',
-                    icon: Icons.auto_awesome,
-                    accent: AppColors.pink,
-                    onTap: () => _openTemplates(context, ref),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _QuickChip(
+                      label: 'Templates',
+                      icon: Icons.auto_awesome,
+                      accent: AppColors.pink,
+                      onTap: () => _openTemplates(context, ref),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _QuickChip(
-                    label: 'Blank',
-                    icon: Icons.add,
-                    accent: AppColors.cyan,
-                    onTap: () => _newProject(context, ref),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _QuickChip(
+                      label: 'Blank',
+                      icon: Icons.add,
+                      accent: AppColors.cyan,
+                      onTap: () => _newProject(context, ref),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _PacksEntry(onTap: () => context.pushNamed(Routes.packs)),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Recent stickers',
-                  style: textTheme.headlineSmall?.copyWith(fontSize: 15),
-                ),
-                GestureDetector(
-                  onTap: () => context.pushNamed(Routes.allProjects),
-                  behavior: HitTestBehavior.opaque,
-                  child: Row(
-                    children: [
-                      Text('See all', style: textTheme.bodySmall),
-                      const Icon(
-                        Icons.chevron_right,
-                        size: 16,
-                        color: AppColors.textMuted,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            projectsAsync.when(
-              loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: Center(child: CircularProgressIndicator()),
+                ],
               ),
-              error: (_, _) => const _EmptyRecent(),
-              data: (projects) => projects.isEmpty
-                  ? const _EmptyRecent()
-                  : GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 14,
-                      crossAxisSpacing: 14,
-                      childAspectRatio: 0.82,
+              const SizedBox(height: 12),
+              _PacksEntry(onTap: () => context.pushNamed(Routes.packs)),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Recent stickers',
+                    style: textTheme.headlineSmall?.copyWith(fontSize: 15),
+                  ),
+                  GestureDetector(
+                    onTap: () => context.pushNamed(Routes.allProjects),
+                    behavior: HitTestBehavior.opaque,
+                    child: Row(
                       children: [
-                        for (final p in projects)
-                          ProjectTile(
-                            project: p,
-                            radius: tokens.radiusCard,
-                            onTap: () => _openProject(context, ref, p),
-                            onDelete: () => _deleteProject(ref, p.id),
-                          ),
+                        Text('See all', style: textTheme.bodySmall),
+                        const Icon(
+                          Icons.chevron_right,
+                          size: 16,
+                          color: AppColors.textMuted,
+                        ),
                       ],
                     ),
-            ),
-          ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              projectsAsync.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (_, _) => const _EmptyRecent(),
+                data: (projects) => projects.isEmpty
+                    ? const _EmptyRecent()
+                    : GridView.count(
+                        crossAxisCount: 2,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        mainAxisSpacing: 14,
+                        crossAxisSpacing: 14,
+                        childAspectRatio: 0.82,
+                        children: [
+                          for (final p in projects)
+                            ProjectTile(
+                              project: p,
+                              radius: tokens.radiusCard,
+                              onTap: () => _openProject(context, ref, p),
+                              onDelete: () => _deleteProject(ref, p.id),
+                            ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -7,6 +7,7 @@ import '../../core/models/sticker_project.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
+import '../../core/widgets/responsive_center.dart';
 import '../editor/state/editor_controller.dart';
 import 'project_repository.dart';
 import 'widgets/project_tile.dart';
@@ -59,53 +60,58 @@ class _AllProjectsScreenState extends ConsumerState<AllProjectsScreen> {
         child: Column(
           children: [
             _topBar(context),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 2, 20, 12),
-              child: _searchField(),
+            ResponsiveCenter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 2, 20, 12),
+                child: _searchField(),
+              ),
             ),
             Expanded(
-              child: projectsAsync.when(
-                loading: () =>
-                    const Center(child: CircularProgressIndicator()),
-                error: (_, _) => const _Empty(
-                  icon: Icons.error_outline,
-                  title: "Couldn't load your stickers",
-                  body: 'Try again in a moment.',
+              child: ResponsiveCenter(
+                child: projectsAsync.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (_, _) => const _Empty(
+                    icon: Icons.error_outline,
+                    title: "Couldn't load your stickers",
+                    body: 'Try again in a moment.',
+                  ),
+                  data: (all) {
+                    if (all.isEmpty) {
+                      return const _Empty(
+                        icon: Icons.auto_awesome,
+                        title: 'No stickers yet',
+                        body: 'Make one from Home and it will show up here.',
+                      );
+                    }
+                    final matches = all
+                        .where((p) => _matches(p, _query))
+                        .toList();
+                    if (matches.isEmpty) {
+                      return _Empty(
+                        icon: Icons.search_off,
+                        title: 'No matches',
+                        body: 'Nothing matches "$_query".',
+                      );
+                    }
+                    return GridView.count(
+                      crossAxisCount: 2,
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+                      mainAxisSpacing: 14,
+                      crossAxisSpacing: 14,
+                      childAspectRatio: 0.82,
+                      children: [
+                        for (final p in matches)
+                          ProjectTile(
+                            project: p,
+                            radius: tokens.radiusCard,
+                            onTap: () => _openProject(p),
+                            onDelete: () => _deleteProject(p.id),
+                          ),
+                      ],
+                    );
+                  },
                 ),
-                data: (all) {
-                  if (all.isEmpty) {
-                    return const _Empty(
-                      icon: Icons.auto_awesome,
-                      title: 'No stickers yet',
-                      body: 'Make one from Home and it will show up here.',
-                    );
-                  }
-                  final matches =
-                      all.where((p) => _matches(p, _query)).toList();
-                  if (matches.isEmpty) {
-                    return _Empty(
-                      icon: Icons.search_off,
-                      title: 'No matches',
-                      body: 'Nothing matches "$_query".',
-                    );
-                  }
-                  return GridView.count(
-                    crossAxisCount: 2,
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-                    mainAxisSpacing: 14,
-                    crossAxisSpacing: 14,
-                    childAspectRatio: 0.82,
-                    children: [
-                      for (final p in matches)
-                        ProjectTile(
-                          project: p,
-                          radius: tokens.radiusCard,
-                          onTap: () => _openProject(p),
-                          onDelete: () => _deleteProject(p.id),
-                        ),
-                    ],
-                  );
-                },
               ),
             ),
           ],
