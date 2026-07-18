@@ -20,8 +20,11 @@ class SegmentationRegistry {
 
   /// The highest-priority engine reporting [SegmentationEngine.isAvailable],
   /// or `null` when none can run (offline install with no fallback, etc.).
-  Future<SegmentationEngine?> resolve() async {
-    for (final engine in engines) {
+  ///
+  /// [preferredId] (the user's chosen engine) is tried first when available;
+  /// the rest keep their configured priority as fallbacks.
+  Future<SegmentationEngine?> resolve({String? preferredId}) async {
+    for (final engine in _prioritized(preferredId)) {
       if (await engine.isAvailable()) return engine;
     }
     return null;
@@ -30,8 +33,15 @@ class SegmentationRegistry {
   /// Segment [request] using the best available engine. If that engine throws a
   /// [SegmentationException], fall through to the next available one. Returns
   /// `null` only when no engine can produce a mask.
-  Future<SegmentationResult?> segment(SegmentationRequest request) async {
-    for (final engine in engines) {
+  ///
+  /// When [preferredId] is set, the engine with that id runs first (if
+  /// available); a failure or unavailability still falls through to the others,
+  /// so the user's choice is a preference, never a dead end.
+  Future<SegmentationResult?> segment(
+    SegmentationRequest request, {
+    String? preferredId,
+  }) async {
+    for (final engine in _prioritized(preferredId)) {
       if (!await engine.isAvailable()) continue;
       try {
         return await engine.segment(request);
@@ -41,6 +51,22 @@ class SegmentationRegistry {
       }
     }
     return null;
+  }
+
+  /// [engines] with the one matching [preferredId] (if any) moved to the front;
+  /// the remaining engines keep their configured order as fallbacks.
+  List<SegmentationEngine> _prioritized(String? preferredId) {
+    if (preferredId == null) return engines;
+    final preferred = [
+      for (final e in engines)
+        if (e.id == preferredId) e,
+    ];
+    if (preferred.isEmpty) return engines;
+    return [
+      ...preferred,
+      for (final e in engines)
+        if (e.id != preferredId) e,
+    ];
   }
 }
 

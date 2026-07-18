@@ -97,4 +97,54 @@ void main() {
       expect(await registry.segment(_request), isNull);
     });
   });
+
+  group('SegmentationRegistry preferred engine', () {
+    test(
+      'runs the preferred engine first, ahead of configured order',
+      () async {
+        final a = FakeEngine('a');
+        final b = FakeEngine('b');
+        final registry = SegmentationRegistry([a, b]);
+
+        final result = await registry.segment(_request, preferredId: 'b');
+
+        expect(result?.engineId, 'b');
+        expect(a.segmentCalls, 0, reason: 'preferred b pre-empted a');
+        expect(b.segmentCalls, 1);
+      },
+    );
+
+    test('resolve() honours the preferred id', () async {
+      final registry = SegmentationRegistry([FakeEngine('a'), FakeEngine('b')]);
+      expect((await registry.resolve(preferredId: 'b'))?.id, 'b');
+    });
+
+    test('falls through to others when the preferred is unavailable', () async {
+      final registry = SegmentationRegistry([
+        FakeEngine('a'),
+        FakeEngine('b', available: false),
+      ]);
+      // Prefer the unavailable engine — the choice is never a dead end.
+      final result = await registry.segment(_request, preferredId: 'b');
+      expect(result?.engineId, 'a');
+    });
+
+    test('falls through to others when the preferred one fails', () async {
+      final preferred = FakeEngine('pref', throwsOnSegment: true);
+      final backup = FakeEngine('backup');
+      final registry = SegmentationRegistry([backup, preferred]);
+
+      final result = await registry.segment(_request, preferredId: 'pref');
+
+      expect(preferred.segmentCalls, 1, reason: 'preferred tried first');
+      expect(backup.segmentCalls, 1, reason: 'then fell through to backup');
+      expect(result?.engineId, 'backup');
+    });
+
+    test('an unknown preferred id keeps the configured order', () async {
+      final registry = SegmentationRegistry([FakeEngine('a'), FakeEngine('b')]);
+      final result = await registry.segment(_request, preferredId: 'ghost');
+      expect(result?.engineId, 'a');
+    });
+  });
 }

@@ -6,12 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sticker_maker/core/models/frame.dart';
 import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
+import 'package:sticker_maker/core/settings/settings_store.dart';
 import 'package:sticker_maker/core/theme/app_theme.dart';
 import 'package:sticker_maker/features/editor/editor_screen.dart';
 import 'package:sticker_maker/features/editor/state/editor_controller.dart';
 import 'package:sticker_maker/features/home/project_repository.dart';
 import 'package:sticker_maker/features/segmentation/alpha_mask.dart';
 import 'package:sticker_maker/features/segmentation/mask_store.dart';
+import 'package:sticker_maker/features/segmentation/seg_model.dart';
 import 'package:sticker_maker/features/segmentation/segmentation_engine.dart';
 import 'package:sticker_maker/features/segmentation/segmentation_registry.dart';
 
@@ -51,6 +53,20 @@ class _FakeMaskStore extends MaskStore {
       '/fake/mask_$id.png';
 }
 
+/// In-memory settings so the model picker's persistence resolves inside the
+/// widget test's fake-async zone — real `dart:io` file IO never completes there
+/// (and would leave a locked temp file). Disk persistence is covered in
+/// settings_store_test / seg_model_test, which run under real async.
+class _MemorySettingsStore extends SettingsStore {
+  String? _segId;
+
+  @override
+  Future<String?> segmentationModelId() async => _segId;
+
+  @override
+  Future<void> setSegmentationModelId(String id) async => _segId = id;
+}
+
 late Directory _tmp;
 
 Future<void> pumpEditorWith(
@@ -78,6 +94,8 @@ Future<void> pumpEditorWith(
         ),
         segmentationRegistryProvider.overrideWithValue(registry),
         maskStoreProvider.overrideWithValue(_FakeMaskStore()),
+        // In-memory settings so the picker resolves without host file IO.
+        settingsStoreProvider.overrideWithValue(_MemorySettingsStore()),
       ],
       child: MaterialApp(
         theme: buildStickerTheme(),
@@ -96,6 +114,16 @@ Future<void> selectPhotoAndOpenCutout(WidgetTester tester) async {
   await tester.tap(find.text('Doggo').last);
   await tester.pumpAndSettle();
   await tester.tap(find.text('Cut out')); // tool tab
+  await tester.pumpAndSettle();
+}
+
+/// The Cut out panel scrolls (model picker above the CTA), so the button can sit
+/// below the fold — bring it into view before tapping, as a user would.
+Future<void> tapPanelCta(WidgetTester tester, String label) async {
+  final finder = find.text(label);
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
   await tester.pumpAndSettle();
 }
 
@@ -127,8 +155,7 @@ void main() {
 
     expect(find.text('Remove background'), findsOneWidget);
 
-    await tester.tap(find.text('Remove background'));
-    await tester.pumpAndSettle();
+    await tapPanelCta(tester, 'Remove background');
 
     // Mask produced, persisted and applied → the button is now the undo state.
     expect(find.text('Undo removal'), findsOneWidget);
@@ -141,12 +168,10 @@ void main() {
     await pumpEditorWith(tester, SegmentationRegistry([_AlwaysOnEngine()]));
     await selectPhotoAndOpenCutout(tester);
 
-    await tester.tap(find.text('Remove background'));
-    await tester.pumpAndSettle();
+    await tapPanelCta(tester, 'Remove background');
     expect(find.text('Undo removal'), findsOneWidget);
 
-    await tester.tap(find.text('Undo removal'));
-    await tester.pumpAndSettle();
+    await tapPanelCta(tester, 'Undo removal');
     expect(find.text('Remove background'), findsOneWidget);
   });
 
@@ -156,11 +181,56 @@ void main() {
     await pumpEditorWith(tester, SegmentationRegistry([_UnavailableEngine()]));
     await selectPhotoAndOpenCutout(tester);
 
-    await tester.tap(find.text('Remove background'));
-    await tester.pumpAndSettle();
+    await tapPanelCta(tester, 'Remove background');
 
     // Nothing was applied; the button stays in its idle state.
     expect(find.text('Remove background'), findsOneWidget);
     expect(find.text('Undo removal'), findsNothing);
+  });
+
+  testWidgets('model picker shows both engines, defaulting to Built-in AI', (
+    tester,
+  ) async {
+    await pumpEditorWith(tester, SegmentationRegistry([_AlwaysOnEngine()]));
+    await selectPhotoAndOpenCutout(tester);
+
+    expect(find.text('AI MODEL'), findsOneWidget);
+    expect(find.text(SegModel.builtin.label), findsOneWidget);
+    expect(find.text(SegModel.u2net.label), findsOneWidget);
+    expect(find.text(SegModel.builtin.tagline), findsOneWidget);
+  });
+
+  testWidgets('tapping a model row switches the active model', (tester) async {
+    await pumpEditorWith(tester, SegmentationRegistry([_AlwaysOnEngine()]));
+    await selectPhotoAndOpenCutout(tester);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(EditorScreen)),
+    );
+    // Defaults to Built-in AI (loading resolves to the default via ?? builtin).
+    expect(
+      container.read(segModelProvider).asData?.value ?? SegModel.builtin,
+      SegModel.builtin,
+    );
+
+    // The U²-Net row sits within the visible panel (above the CTA fold).
+    await tester.tap(find.text(SegModel.u2net.label));
+    await tester.pump(); // optimistic select() sets the state synchronously
+
+    expect(container.read(segModelProvider).asData?.value, SegModel.u2net);
+    // (On-disk persistence is covered in seg_model_test/settings_store_test,
+    // which run under real async where dart:io file writes complete.)
+  });
+
+  testWidgets('the "?" opens the "Which AI model?" info sheet', (tester) async {
+    await pumpEditorWith(tester, SegmentationRegistry([_AlwaysOnEngine()]));
+    await selectPhotoAndOpenCutout(tester);
+
+    await tester.tap(find.text('?'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Which AI model?'), findsOneWidget);
+    expect(find.text(SegModel.builtin.blurb), findsOneWidget);
+    expect(find.text(SegModel.u2net.blurb), findsOneWidget);
   });
 }

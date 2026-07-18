@@ -31,4 +31,22 @@ void main() {
     File('${tmp.path}/settings.json').writeAsStringSync('{not valid json');
     expect(await SettingsStore(baseDir: tmp).onboardingSeen(), isFalse);
   });
+
+  test('segmentation model id defaults to null when unset', () async {
+    expect(await SettingsStore(baseDir: tmp).segmentationModelId(), isNull);
+  });
+
+  test('persists the segmentation model id across instances', () async {
+    await SettingsStore(baseDir: tmp).setSegmentationModelId('u2net');
+    expect(await SettingsStore(baseDir: tmp).segmentationModelId(), 'u2net');
+  });
+
+  test('onboarding and model preference coexist in one file', () async {
+    final store = SettingsStore(baseDir: tmp);
+    await store.setOnboardingSeen(true);
+    await store.setSegmentationModelId('builtin');
+    // Writing one key must not clobber the other.
+    expect(await store.onboardingSeen(), isTrue);
+    expect(await store.segmentationModelId(), 'builtin');
+  });
 }

@@ -26,6 +26,7 @@ import '../segmentation/alpha_mask.dart';
 import '../segmentation/mask_brush.dart';
 import '../segmentation/mask_processing.dart';
 import '../segmentation/mask_store.dart';
+import '../segmentation/seg_model.dart';
 import '../segmentation/segmentation_engine.dart';
 import '../segmentation/segmentation_registry.dart';
 import 'mask_mapper.dart';
@@ -758,12 +759,15 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     final label = _removingBg
         ? 'Working…'
         : (removed ? 'Undo removal' : 'Remove background');
+    final model = ref.watch(segModelProvider).asData?.value ?? SegModel.builtin;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Padding(
           padding: EdgeInsets.only(bottom: 4),
           child: Text(
             'AI Background Removal',
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: AppFonts.display,
               fontWeight: FontWeight.w600,
@@ -778,6 +782,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
               : "One tap to isolate your subject. We'll auto-detect the edges — "
                     'refine anything by hand in the Erase tool.',
         ),
+        _modelPicker(model),
+        const SizedBox(height: 16),
         GradientButton(
           label: label,
           icon: Icons.auto_awesome,
@@ -801,6 +807,232 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     );
   }
 
+  /// The "AI Model" picker: a labelled radio list of [SegModel]s plus a "?"
+  /// that opens the info sheet. Tapping a row persists the preference (which
+  /// engine `_removeBackground` runs first).
+  Widget _modelPicker(SegModel selected) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            children: [
+              const Text(
+                'AI MODEL',
+                style: TextStyle(
+                  fontFamily: AppFonts.ui,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(width: 7),
+              _modelInfoButton(),
+            ],
+          ),
+        ),
+        for (final m in SegModel.values) ...[
+          _modelRow(m, selected: m == selected),
+          if (m != SegModel.values.last) const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+
+  Widget _modelInfoButton() {
+    return GestureDetector(
+      onTap: _showModelInfo,
+      child: Container(
+        width: 20,
+        height: 20,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.green.withValues(alpha: 0.12),
+          border: Border.all(
+            color: AppColors.green.withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+        ),
+        child: const Text(
+          '?',
+          style: TextStyle(
+            fontFamily: AppFonts.display,
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+            height: 1,
+            color: AppColors.greenLight,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modelRow(SegModel model, {required bool selected}) {
+    return GestureDetector(
+      onTap: _removingBg
+          ? null
+          : () => ref.read(segModelProvider.notifier).select(model),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.green.withValues(alpha: 0.10)
+              : AppColors.card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected
+                ? AppColors.green.withValues(alpha: 0.6)
+                : AppColors.border,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            _modelRadio(selected),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    model.label,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.ui,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    model.tagline,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.ui,
+                      fontSize: 11,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _modelRadio(bool selected) {
+    return Container(
+      width: 20,
+      height: 20,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: selected ? AppColors.green : Colors.transparent,
+        border: selected
+            ? null
+            : Border.all(color: Colors.white.withValues(alpha: 0.22), width: 2),
+      ),
+      child: selected
+          ? const DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+              ),
+              child: SizedBox(width: 8, height: 8),
+            )
+          : null,
+    );
+  }
+
+  /// Bottom sheet explaining the two models (design's "Which AI model?").
+  Future<void> _showModelInfo() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 14),
+                child: Text(
+                  'Which AI model?',
+                  style: TextStyle(
+                    fontFamily: AppFonts.display,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                    color: AppColors.green,
+                  ),
+                ),
+              ),
+              for (final m in SegModel.values) ...[
+                _modelInfoCard(m),
+                if (m != SegModel.values.last) const SizedBox(height: 12),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modelInfoCard(SegModel model) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.inputField,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            model.label,
+            style: const TextStyle(
+              fontFamily: AppFonts.ui,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppColors.greenLight,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            model.blurb,
+            style: const TextStyle(
+              fontFamily: AppFonts.ui,
+              fontSize: 12.5,
+              height: 1.55,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Runs the AI cut-out for [image]: pick the best available segmentation
   /// engine, clean up the mask, persist it and apply it to the layer (undoable
   /// via the controller's history). Gracefully reports when no engine can run.
@@ -808,8 +1040,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     setState(() => _removingBg = true);
     try {
       final registry = ref.read(segmentationRegistryProvider);
+      final preferred =
+          ref.read(segModelProvider).asData?.value ?? SegModel.builtin;
       final result = await registry.segment(
         SegmentationRequest(imagePath: image.assetPath),
+        preferredId: preferred.engineId,
       );
       if (result == null) {
         if (mounted) {
@@ -823,7 +1058,16 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       );
       final path = await ref.read(maskStoreProvider).save(mask, id: image.id);
       _controller.setImageMask(image.id, path);
-      if (mounted) _toast('Background removed');
+      if (mounted) {
+        // Report which engine actually ran — it may differ from the preference
+        // if that one was unavailable and the registry fell through.
+        final used = SegModel.fromEngineId(result.engineId);
+        _toast(
+          used == null
+              ? 'Background removed'
+              : 'Background removed · ${used.label}',
+        );
+      }
     } catch (_) {
       if (mounted) _toast("Couldn't remove the background — try again");
     } finally {

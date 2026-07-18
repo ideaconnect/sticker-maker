@@ -73,9 +73,10 @@ flutter:
 
   assets:
     - assets/branding/
-    # On-device segmentation fallback weights (#28). The .onnx is added
-    # out-of-band (see assets/models/README.md); the dir ships regardless.
-    - assets/models/
+    # On-device segmentation fallback weights (#28): the bundled U²-Netp ONNX.
+    # Bundled as a single file (not the whole dir) so conversion sources never
+    # ship — the .pth checkpoints live in model_conversion/, out of the bundle.
+    - assets/models/u2netp.onnx
     # Bundled font license texts — shipped in-app (registered into
     # LicenseRegistry) as SIL OFL / Apache-2.0 require. See about/bundled_licenses.dart.
     - assets/fonts/OFL-PlusJakartaSans.txt

@@ -15,6 +15,7 @@ class SettingsStore {
 
   static const _fileName = 'settings.json';
   static const _kOnboardingSeen = 'onboardingSeen';
+  static const _kSegModel = 'segmentationModel';
 
   Future<File> _file() async {
     final base = _baseOverride ?? await getApplicationDocumentsDirectory();
@@ -44,6 +45,18 @@ class SettingsStore {
   Future<void> setOnboardingSeen(bool value) async {
     final data = await _read();
     data[_kOnboardingSeen] = value;
+    await _write(data);
+  }
+
+  /// The user's preferred background-removal model id (see `SegModel`), or null
+  /// when unset — the segmentation layer maps that to its default. Stored as a
+  /// bare string so this core layer stays free of any feature dependency.
+  Future<String?> segmentationModelId() async =>
+      (await _read())[_kSegModel] as String?;
+
+  Future<void> setSegmentationModelId(String id) async {
+    final data = await _read();
+    data[_kSegModel] = id;
     await _write(data);
   }
 }

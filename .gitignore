@@ -36,3 +36,13 @@ ios/Flutter/Flutter.podspec
 # Secrets
 key.properties
 .env
+
+# Model conversion sources: the PyTorch checkpoints are large (u2net.pth is
+# 176 MB, over GitHub's 100 MB limit) and only inputs to the conversion. The
+# shipped artifact is assets/models/u2netp.onnx (committed). Re-fetch the .pth
+# per model_conversion/README.md and re-run convert_u2netp.py to reproduce.
+model_conversion/*.pth
+
+# Python conversion tooling caches
+__pycache__/
+*.pyc
