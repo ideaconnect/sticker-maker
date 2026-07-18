@@ -33,6 +33,16 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            // Release builds shrink + obfuscate. ONNX Runtime and ML Kit resolve
+            // their Java classes by name via JNI, so they must be kept explicitly
+            // (see proguard-rules.pro) or on-device inference aborts the VM.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
