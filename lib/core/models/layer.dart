@@ -71,11 +71,12 @@ final class ImageLayer extends Layer {
     this.outlineColor = const Color(0xFFFFFFFF),
   });
 
-  /// Project-relative path to the source image.
+  /// Absolute path to the source image, copied into the app's assets dir by
+  /// ImageImportService.
   final String assetPath;
 
-  /// Project-relative path to the 8-bit alpha mask, if the background has been
-  /// removed or manually erased.
+  /// Absolute path to the 8-bit alpha mask (written by MaskStore), if the
+  /// background has been removed or manually erased.
   final String? maskPath;
 
   final ImageAdjustments adjustments;

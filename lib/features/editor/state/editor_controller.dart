@@ -195,12 +195,41 @@ class EditorController extends Notifier<EditorState> {
     ),
   );
 
-  ImageLayer addImageLayer({
-    required String assetPath,
-    String name = 'Photo',
-  }) => _addLayer(
-    () => ImageLayer(id: _newId('l'), name: name, assetPath: assetPath),
-  );
+  /// With no explicit [name], photos are auto-numbered ("Photo", "Photo 2", …)
+  /// against the current frame so multiple image layers stay tellable apart
+  /// in the Layers panel (#73). Additional photos land cascade-offset from
+  /// center (24 logical px per existing photo, cycling) so a new image never
+  /// exactly buries the one below (#74).
+  ImageLayer addImageLayer({required String assetPath, String? name}) {
+    final resolved = name ?? _nextPhotoName();
+    final existing = state.layers.whereType<ImageLayer>().length;
+    final cascade = (existing % 5) * 24.0;
+    final transform = cascade == 0
+        ? LayerTransform.identity
+        : LayerTransform(position: Offset(256 + cascade, 256 + cascade));
+    return _addLayer(
+      () => ImageLayer(
+        id: _newId('l'),
+        name: resolved,
+        assetPath: assetPath,
+        transform: transform,
+      ),
+    );
+  }
+
+  /// The smallest unused "Photo N" name on the current frame ("Photo" = N 1).
+  String _nextPhotoName() {
+    final names = state.layers
+        .whereType<ImageLayer>()
+        .map((l) => l.name)
+        .toSet();
+    if (!names.contains('Photo')) return 'Photo';
+    var n = 2;
+    while (names.contains('Photo $n')) {
+      n++;
+    }
+    return 'Photo $n';
+  }
 
   /// Drops an [emoji] onto the canvas as a decorative (no outline/shadow) text
   /// layer from the sticker library (#61). Centered, large, and selected.

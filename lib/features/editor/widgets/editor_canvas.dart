@@ -1,4 +1,7 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,6 +50,13 @@ class EditorCanvas extends ConsumerStatefulWidget {
 class _EditorCanvasState extends ConsumerState<EditorCanvas> {
   static const double _logical = 512;
 
+  /// Decoded pixel size per photo assetPath, so hit boxes and the selection
+  /// frame match the BoxFit.contain content rect instead of the full 440
+  /// square (#74). Read from the encoded header only — pixels are never
+  /// decoded here.
+  final Map<String, Size> _imageDims = {};
+  final Set<String> _dimsLoading = {};
+
   LayerTransform? _startTransform;
   Offset? _startFocal;
   String? _gestureLayerId;
@@ -61,9 +71,41 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
   bool _isErasing(EditorState editor) =>
       editor.tool == EditorTool.erase && editor.selectedLayer is ImageLayer;
 
+  /// Loads (and caches) the pixel dimensions of [path] from the encoded image
+  /// header. Fire-and-forget: until it lands, hit-testing falls back to the
+  /// full square, which is the pre-#74 behavior. Deliberately NOT timer-based
+  /// (a pending zero-duration timer trips widget tests).
+  void _ensureDims(String path) {
+    if (_imageDims.containsKey(path) || !_dimsLoading.add(path)) return;
+    unawaited(_loadDims(path));
+  }
+
+  Future<void> _loadDims(String path) async {
+    try {
+      final bytes = await File(path).readAsBytes();
+      final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      final descriptor = await ui.ImageDescriptor.encoded(buffer);
+      buffer.dispose();
+      final size = Size(
+        descriptor.width.toDouble(),
+        descriptor.height.toDouble(),
+      );
+      descriptor.dispose();
+      if (mounted) setState(() => _imageDims[path] = size);
+    } catch (_) {
+      // Unreadable file — keep the square fallback (and don't retry).
+      if (mounted) _imageDims[path] = Size.zero;
+    } finally {
+      _dimsLoading.remove(path);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final editor = ref.watch(editorControllerProvider);
+    for (final layer in editor.layers.whereType<ImageLayer>()) {
+      _ensureDims(layer.assetPath);
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         final side = constraints.biggest.shortestSide;
@@ -186,10 +228,23 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
   }
 
   /// The layer's bounding size in 512-logical units, including its own scale.
+  /// Image layers shrink to their BoxFit.contain content rect (once the header
+  /// dims are cached) so a letterboxed photo doesn't blanket the canvas and
+  /// block taps on the layer underneath (#74).
   Size _sizeOf(Layer layer) {
     final s = layer.transform.scale;
     return switch (layer) {
-      ImageLayer() => Size(440 * s, 440 * s),
+      ImageLayer(:final assetPath) => () {
+        const box = 440.0;
+        final dims = _imageDims[assetPath];
+        if (dims == null || dims.width <= 0 || dims.height <= 0) {
+          return Size(box * s, box * s);
+        }
+        final ar = dims.width / dims.height;
+        return ar >= 1
+            ? Size(box * s, box / ar * s)
+            : Size(box * ar * s, box * s);
+      }(),
       BubbleLayer() => kBubbleBaseSize * s,
       TextLayer() => () {
         final tp = TextPainter(

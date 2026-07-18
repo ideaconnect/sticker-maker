@@ -81,6 +81,30 @@ void main() {
     expect(s.selectedLayerId, added.id);
   });
 
+  test('addImageLayer auto-numbers photos and reuses freed names (#73)', () {
+    final h = harness(twoLayerProject()); // already contains "Photo"
+    final second = h.controller.addImageLayer(assetPath: 'b.png');
+    final third = h.controller.addImageLayer(assetPath: 'c.png');
+    expect(second.name, 'Photo 2');
+    expect(third.name, 'Photo 3');
+
+    // Freeing "Photo 2" makes it the next auto-name; explicit names win.
+    h.controller.removeLayer(second.id);
+    expect(h.controller.addImageLayer(assetPath: 'd.png').name, 'Photo 2');
+    expect(
+      h.controller.addImageLayer(assetPath: 'e.png', name: 'Sky').name,
+      'Sky',
+    );
+  });
+
+  test('additional photos cascade-offset from center (#74)', () {
+    final h = harness(twoLayerProject()); // one ImageLayer at identity
+    final second = h.controller.addImageLayer(assetPath: 'b.png');
+    final third = h.controller.addImageLayer(assetPath: 'c.png');
+    expect(second.transform.position, const Offset(280, 280));
+    expect(third.transform.position, const Offset(304, 304));
+  });
+
   test('removeLayer clears selection when the selected layer is removed', () {
     final h = harness(twoLayerProject());
     h.controller.selectLayer('txt');

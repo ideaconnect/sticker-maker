@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:sticker_maker/core/models/frame.dart';
 import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
@@ -85,5 +88,68 @@ void main() {
     expect(after.dy, closeTo(before.dy, 0.01));
     // The drag registers as one coalesced undo step.
     expect(c.read(editorControllerProvider.notifier).canUndo, isTrue);
+  });
+
+  testWidgets('a wide photo hit box shrinks to its content rect (#74)', (
+    tester,
+  ) async {
+    // A real 200×100 file so the canvas can read the encoded header dims.
+    final dir = (await tester.runAsync(
+      () => Directory.systemTemp.createTemp('canvas74_'),
+    ))!;
+    addTearDown(() {
+      imageCache.clear();
+      imageCache.clearLiveImages();
+      try {
+        dir.deleteSync(recursive: true);
+      } catch (_) {
+        // Windows can briefly keep the decoded file handle open.
+      }
+    });
+    final file = File('${dir.path}/wide.png');
+    await tester.runAsync(
+      () => file.writeAsBytes(img.encodePng(img.Image(width: 200, height: 100))),
+    );
+
+    final c = await pumpCanvas(
+      tester,
+      StickerProject(
+        id: 'p',
+        name: 'P',
+        frames: [
+          Frame(
+            id: 'f',
+            layers: [
+              ImageLayer(id: 'img', name: 'Photo', assetPath: file.path),
+            ],
+          ),
+        ],
+      ),
+    );
+    // Let the fire-and-forget header read complete. Each await hop in
+    // _ensureDims needs a real-async window (IO/engine completion) followed
+    // by a pump (fake-zone microtask flush), so interleave several.
+    for (var i = 0; i < 6; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 40)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    // Canvas widget is 320px for a 512 logical grid. The 2:1 photo fills
+    // 440×220 logical centered at (256,256) → y spans 146..366. A tap at
+    // logical (256,80) is inside the OLD 440 square (36..476) but above the
+    // content rect, so it must NOT select the photo.
+    final topLeft = tester.getTopLeft(find.byType(EditorCanvas));
+    const scale = 320 / 512;
+    await tester.tapAt(topLeft + const Offset(256 * scale, 80 * scale));
+    await tester.pumpAndSettle();
+    expect(c.read(editorControllerProvider).selectedLayerId, isNull);
+
+    // Dead-center is inside the content rect → selects.
+    await tester.tapAt(topLeft + const Offset(256 * scale, 256 * scale));
+    await tester.pumpAndSettle();
+    expect(c.read(editorControllerProvider).selectedLayerId, 'img');
   });
 }

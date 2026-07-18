@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show listEquals;
@@ -249,8 +250,13 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     );
   }
 
-  bool _hasCutout(EditorState editor) =>
-      editor.layers.any((l) => l is ImageLayer && l.maskPath != null);
+  /// Badge for the SELECTED layer only — with several photos a global "any
+  /// layer has a mask" reading was misleading (#73); per-layer state lives on
+  /// the Layers-panel thumbnails.
+  bool _hasCutout(EditorState editor) {
+    final selected = editor.selectedLayer;
+    return selected is ImageLayer && selected.maskPath != null;
+  }
 
   /// The previous frame to ghost behind the current one (onion skin), or null
   /// when disabled / not applicable. Suppressed during playback.
@@ -344,7 +350,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         children: [
           _panelHeader(EditorTool.adjust),
           _emptyHint(
-            'Adjustments apply to a photo layer.\nAdd a photo (import lands in M1, #21).',
+            'Adjustments apply to a photo layer.\nSelect a photo, or add one '
+            'from the Layers tab.',
           ),
         ],
       );
@@ -1628,6 +1635,44 @@ class _LayerRow extends StatelessWidget {
   final VoidCallback onToggleVisibility;
   final VoidCallback onDelete;
 
+  /// A 38px preview of the photo (decoded small via [cacheWidth], never at
+  /// full resolution), falling back to the generic icon when the file is
+  /// missing. [cut] overlays a green tick for a cut-out layer.
+  Widget _photoThumb(String assetPath, {required bool cut}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(9),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(
+            File(assetPath),
+            fit: BoxFit.cover,
+            cacheWidth: 114, // 38 logical px × 3 for high-dpi rows
+            errorBuilder: (_, _, _) => const Icon(
+              Icons.image_outlined,
+              size: 18,
+              color: Colors.white,
+            ),
+          ),
+          if (cut)
+            Positioned(
+              right: 2,
+              bottom: 2,
+              child: Container(
+                width: 13,
+                height: 13,
+                decoration: const BoxDecoration(
+                  color: AppColors.green,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check, size: 9, color: Colors.white),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final (Widget badge, String typeLabel) = switch (layer) {
@@ -1646,9 +1691,11 @@ class _LayerRow extends StatelessWidget {
         const Icon(Icons.chat_bubble_outline, size: 18, color: Colors.white),
         'Bubble layer',
       ),
-      ImageLayer() => (
-        const Icon(Icons.image_outlined, size: 18, color: Colors.white),
-        'Image layer',
+      // A real thumbnail so multiple photos are tellable apart (#73), with a
+      // small green tick when this layer has been cut out.
+      ImageLayer(:final assetPath, :final maskPath) => (
+        _photoThumb(assetPath, cut: maskPath != null),
+        maskPath == null ? 'Image layer' : 'Image layer · cut out',
       ),
     };
     final flatBadge = layer is! ImageLayer;
