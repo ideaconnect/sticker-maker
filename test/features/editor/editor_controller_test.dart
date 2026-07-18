@@ -156,6 +156,16 @@ void main() {
     expect(img.adjustments, adj);
   });
 
+  test('addEmoji adds a decorative, selected text layer', () {
+    final h = harness(twoLayerProject());
+    final layer = h.controller.addEmoji('🐶');
+    final s = h.container.read(editorControllerProvider);
+    expect(s.selectedLayerId, layer.id);
+    final added = s.layers.firstWhere((l) => l.id == layer.id) as TextLayer;
+    expect(added.text, '🐶');
+    expect(added.decorative, isTrue, reason: 'no caption stroke on emoji');
+  });
+
   test('updateImageOutline sets width and color; coalesces to one undo', () {
     final h = harness(twoLayerProject());
     ImageLayer img() =>

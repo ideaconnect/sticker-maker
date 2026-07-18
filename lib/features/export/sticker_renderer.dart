@@ -201,6 +201,15 @@ abstract final class StickerRenderer {
       letterSpacing: 1,
       fontWeight: FontWeight.w700,
     );
+    // Emoji / props (#61) render as a plain glyph — no caption stroke/shadow.
+    if (layer.decorative) {
+      final glyph = TextPainter(
+        text: TextSpan(text: layer.text, style: style.copyWith(color: layer.color)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      glyph.paint(canvas, Offset(-glyph.width / 2, -glyph.height / 2));
+      return;
+    }
     // Outline (drawn behind) carries the drop shadow.
     final stroke = TextPainter(
       text: TextSpan(

@@ -202,6 +202,19 @@ class EditorController extends Notifier<EditorState> {
     () => ImageLayer(id: _newId('l'), name: name, assetPath: assetPath),
   );
 
+  /// Drops an [emoji] onto the canvas as a decorative (no outline/shadow) text
+  /// layer from the sticker library (#61). Centered, large, and selected.
+  TextLayer addEmoji(String emoji, {double fontSize = 96}) => _addLayer(
+    () => TextLayer(
+      id: _newId('l'),
+      name: emoji,
+      text: emoji,
+      fontFamily: 'Rubik',
+      fontSize: fontSize,
+      decorative: true,
+    ),
+  );
+
   void removeLayer(String id) {
     _mutateLayers((layers) => layers.where((l) => l.id != id).toList());
     if (state.selectedLayerId == id) selectLayer(null);

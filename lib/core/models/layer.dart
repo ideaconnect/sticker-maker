@@ -190,12 +190,18 @@ final class TextLayer extends Layer {
     super.opacity = 1.0,
     this.fontSize = 40,
     this.color = const Color(0xFFFFFFFF),
+    this.decorative = false,
   });
 
   final String text;
   final String fontFamily;
   final double fontSize;
   final Color color;
+
+  /// When true this layer is a plain glyph (emoji / prop from the sticker
+  /// library, #61) — rendered without the caption stroke + drop shadow so an
+  /// emoji keeps its own colors.
+  final bool decorative;
 
   @override
   String get type => 'text';
@@ -210,6 +216,7 @@ final class TextLayer extends Layer {
     String? fontFamily,
     double? fontSize,
     Color? color,
+    bool? decorative,
   }) {
     return TextLayer(
       id: id ?? this.id,
@@ -221,6 +228,7 @@ final class TextLayer extends Layer {
       fontFamily: fontFamily ?? this.fontFamily,
       fontSize: fontSize ?? this.fontSize,
       color: color ?? this.color,
+      decorative: decorative ?? this.decorative,
     );
   }
 
@@ -231,6 +239,7 @@ final class TextLayer extends Layer {
     'fontFamily': fontFamily,
     'fontSize': fontSize,
     'color': color.toARGB32(),
+    'decorative': decorative,
   };
 
   factory TextLayer.fromJson(Map<String, dynamic> json) {
@@ -246,6 +255,7 @@ final class TextLayer extends Layer {
       fontFamily: json['fontFamily'] as String,
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 40,
       color: Color(json['color'] as int),
+      decorative: json['decorative'] as bool? ?? false,
     );
   }
 
@@ -260,7 +270,8 @@ final class TextLayer extends Layer {
       other.text == text &&
       other.fontFamily == fontFamily &&
       other.fontSize == fontSize &&
-      other.color == color;
+      other.color == color &&
+      other.decorative == decorative;
 
   @override
   int get hashCode => Object.hash(
@@ -273,6 +284,7 @@ final class TextLayer extends Layer {
     fontFamily,
     fontSize,
     color,
+    decorative,
   );
 }
 

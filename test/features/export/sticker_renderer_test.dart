@@ -50,6 +50,26 @@ void main() {
     image.dispose();
   });
 
+  test('a decorative (emoji) text layer renders without error', () async {
+    const frame = Frame(
+      id: 'f',
+      layers: [
+        TextLayer(
+          id: 'e',
+          name: '🐶',
+          text: '🐶',
+          fontFamily: 'Rubik',
+          fontSize: 96,
+          decorative: true,
+        ),
+      ],
+    );
+    final image = await StickerRenderer.renderImage(frame, size: 128);
+    expect(image.width, 128);
+    expect(image.height, 128);
+    image.dispose();
+  });
+
   test('a photo layer composites opaque pixels at the centre', () async {
     final tmp = Directory.systemTemp.createTempSync('sm_render_');
     addTearDown(() {

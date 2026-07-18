@@ -34,6 +34,7 @@ import 'state/editor_controller.dart';
 import 'state/editor_state.dart';
 import 'state/editor_tool.dart';
 import 'widgets/editor_canvas.dart';
+import 'widgets/emoji_picker.dart';
 import 'widgets/sticker_canvas.dart';
 
 /// Editor: top bar, model-driven sticker canvas, a contextual panel that swaps
@@ -1232,6 +1233,12 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             _sheetTile(ctx, Icons.content_paste, 'Paste image', 'paste'),
             _sheetTile(ctx, Icons.title, 'Add text', 'text'),
             _sheetTile(ctx, Icons.chat_bubble_outline, 'Add bubble', 'bubble'),
+            _sheetTile(
+              ctx,
+              Icons.emoji_emotions_outlined,
+              'Add emoji',
+              'emoji',
+            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -1249,6 +1256,12 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       case 'bubble':
         _controller.addBubbleLayer();
         _controller.setTool(EditorTool.text);
+      case 'emoji':
+        if (!mounted) return;
+        final emoji = await showEmojiPicker(context);
+        if (emoji == null) return;
+        _controller.addEmoji(emoji);
+        _controller.setTool(EditorTool.adjust);
     }
   }
 

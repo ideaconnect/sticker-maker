@@ -15,6 +15,7 @@ class StickerCaption extends StatelessWidget {
     this.color = Colors.white,
     this.rotation = -0.087, // ~ -5deg
     this.strokeWidth = 3.5,
+    this.decorative = false,
   });
 
   final String text;
@@ -23,6 +24,9 @@ class StickerCaption extends StatelessWidget {
   final Color color;
   final double rotation;
   final double strokeWidth;
+
+  /// A plain glyph with no outline/shadow — used for emoji & prop layers (#61).
+  final bool decorative;
 
   /// Light fills (white / amber) get a dark outline; everything else white.
   Color get _strokeColor => (color == Colors.white || color == AppColors.amber)
@@ -38,6 +42,14 @@ class StickerCaption extends StatelessWidget {
       letterSpacing: 1,
       fontWeight: FontWeight.w700,
     );
+
+    if (decorative) {
+      // Emoji / prop: a plain glyph in its own colors.
+      return Transform.rotate(
+        angle: rotation,
+        child: Text(text, style: baseStyle.copyWith(color: color)),
+      );
+    }
 
     return Transform.rotate(
       angle: rotation,

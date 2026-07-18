@@ -72,6 +72,7 @@ class StickerCanvas extends StatelessWidget {
         fontSize: layer.fontSize * scale,
         color: layer.color,
         rotation: 0, // rotation handled by the enclosing Transform
+        decorative: layer.decorative,
       ),
       BubbleLayer() => BubbleView(layer: layer, scale: scale),
       ImageLayer() => _imageContent(layer, scale),
