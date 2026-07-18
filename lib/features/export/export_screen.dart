@@ -275,6 +275,8 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                 'Next, Telegram will open with your sticker attached as a '
                 "file. Here's how to turn it into a sticker:\n\n"
                 '1. Send it to Saved Messages (top of the list)\n'
+                '   (Ignore the lower quality in Saved Messages — it will '
+                'look good as a sticker!)\n'
                 '2. Open the @Stickers bot\n'
                 '3. Send /newvideo and a pack title\n'
                 '4. Forward your sticker file from Saved Messages\n'
