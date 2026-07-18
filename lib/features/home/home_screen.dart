@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
+import '../../core/models/frame.dart';
 import '../../core/models/sticker_project.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
@@ -12,6 +13,7 @@ import '../../core/theme/sm_tokens.dart';
 import '../../core/widgets/checkerboard.dart';
 import '../editor/state/editor_controller.dart';
 import '../editor/widgets/sticker_canvas.dart';
+import '../templates/template_picker.dart';
 import 'project_repository.dart';
 
 /// Home screen: brand header, the "New Sticker" hero action, quickstart chips
@@ -33,6 +35,25 @@ class HomeScreen extends ConsumerWidget {
   Future<void> _persist(WidgetRef ref, StickerProject project) async {
     await ref.read(projectRepositoryProvider).save(project);
     ref.invalidate(savedProjectsProvider);
+  }
+
+  /// "Templates" quickstart: pick a pre-composed layout, open it as a fresh,
+  /// fully-editable project.
+  Future<void> _openTemplates(BuildContext context, WidgetRef ref) async {
+    final template = await showTemplatePicker(context);
+    if (template == null || !context.mounted) return;
+    final now = DateTime.now();
+    final id = 'sm_${now.microsecondsSinceEpoch}';
+    final project = StickerProject(
+      id: id,
+      name: template.name,
+      frames: [Frame(id: '${id}_f0', layers: template.buildLayers())],
+      createdAt: now,
+      updatedAt: now,
+    );
+    ref.read(editorControllerProvider.notifier).loadProject(project);
+    unawaited(context.pushNamed(Routes.editor));
+    unawaited(_persist(ref, project));
   }
 
   void _openProject(BuildContext context, WidgetRef ref, StickerProject p) {
@@ -76,7 +97,7 @@ class HomeScreen extends ConsumerWidget {
                     label: 'Templates',
                     icon: Icons.auto_awesome,
                     accent: AppColors.pink,
-                    onTap: () => _newProject(context, ref),
+                    onTap: () => _openTemplates(context, ref),
                   ),
                 ),
                 const SizedBox(width: 10),
