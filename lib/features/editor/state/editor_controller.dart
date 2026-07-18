@@ -190,6 +190,7 @@ class EditorController extends Notifier<EditorState> {
     id,
     image: (l) => l.copyWith(visible: !l.visible),
     text: (l) => l.copyWith(visible: !l.visible),
+    bubble: (l) => l.copyWith(visible: !l.visible),
   );
 
   void setOpacity(String id, double opacity) => _updateLayer(
@@ -197,6 +198,7 @@ class EditorController extends Notifier<EditorState> {
     coalesce: 'opacity:$id',
     image: (l) => l.copyWith(opacity: opacity),
     text: (l) => l.copyWith(opacity: opacity),
+    bubble: (l) => l.copyWith(opacity: opacity),
   );
 
   void updateTransform(String id, LayerTransform transform) => _updateLayer(
@@ -204,6 +206,7 @@ class EditorController extends Notifier<EditorState> {
     coalesce: 'transform:$id',
     image: (l) => l.copyWith(transform: transform),
     text: (l) => l.copyWith(transform: transform),
+    bubble: (l) => l.copyWith(transform: transform),
   );
 
   void updateTextLayer(
@@ -228,6 +231,51 @@ class EditorController extends Notifier<EditorState> {
     id,
     image: (l) => l.copyWith(name: name),
     text: (l) => l.copyWith(name: name),
+    bubble: (l) => l.copyWith(name: name),
+  );
+
+  /// Adds a comic speech bubble (centred a little above the canvas middle) and
+  /// selects it.
+  BubbleLayer addBubbleLayer({
+    String text = 'Woof!',
+    BubbleShape shape = BubbleShape.speech,
+  }) {
+    final layer = BubbleLayer(
+      id: _newId('l'),
+      name: text.isEmpty ? 'Bubble' : text,
+      text: text,
+      shape: shape,
+      transform: const LayerTransform(position: Offset(256, 220)),
+    );
+    _mutateLayers((layers) => [...layers, layer]);
+    selectLayer(layer.id);
+    return layer;
+  }
+
+  void updateBubbleLayer(
+    String id, {
+    String? text,
+    BubbleShape? shape,
+    String? fontFamily,
+    double? fontSize,
+    Color? fillColor,
+    Color? strokeColor,
+    Color? textColor,
+    Offset? tail,
+  }) => _updateLayer(
+    id,
+    coalesce: 'bubble:$id',
+    bubble: (l) => l.copyWith(
+      text: text,
+      name: text,
+      shape: shape,
+      fontFamily: fontFamily,
+      fontSize: fontSize,
+      fillColor: fillColor,
+      strokeColor: strokeColor,
+      textColor: textColor,
+      tail: tail,
+    ),
   );
 
   void updateImageAdjustments(String id, ImageAdjustments adjustments) =>
@@ -250,6 +298,7 @@ class EditorController extends Notifier<EditorState> {
     String id, {
     ImageLayer Function(ImageLayer)? image,
     TextLayer Function(TextLayer)? text,
+    BubbleLayer Function(BubbleLayer)? bubble,
     String? coalesce,
   }) {
     _mutateLayers(
@@ -258,6 +307,7 @@ class EditorController extends Notifier<EditorState> {
         return switch (layer) {
           ImageLayer() => image?.call(layer) ?? layer,
           TextLayer() => text?.call(layer) ?? layer,
+          BubbleLayer() => bubble?.call(layer) ?? layer,
         };
       }).toList(),
       coalesce: coalesce,
@@ -268,6 +318,7 @@ class EditorController extends Notifier<EditorState> {
   Layer _cloneWithNewId(Layer layer) => switch (layer) {
     ImageLayer() => layer.copyWith(id: _newId('l')),
     TextLayer() => layer.copyWith(id: _newId('l')),
+    BubbleLayer() => layer.copyWith(id: _newId('l')),
   };
 
   /// Adds a new frame that duplicates the current one, and selects it.

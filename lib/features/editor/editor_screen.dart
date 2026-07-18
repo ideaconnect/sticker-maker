@@ -46,6 +46,8 @@ class EditorScreen extends ConsumerStatefulWidget {
 class _EditorScreenState extends ConsumerState<EditorScreen> {
   final TextEditingController _textController = TextEditingController();
   String? _editingTextId;
+  final TextEditingController _bubbleTextController = TextEditingController();
+  String? _editingBubbleId;
 
   // Transient tool UI state not yet backed by the model.
   bool _isPlaying = false; // frame playback (M4)
@@ -100,6 +102,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     _saveTimer?.cancel();
     _flushSave(); // persist any pending edit on the way out (no ref use)
     _textController.dispose();
+    _bubbleTextController.dispose();
     super.dispose();
   }
 
@@ -206,7 +209,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   Widget _panelBody(EditorState editor) {
     return switch (editor.tool) {
       EditorTool.adjust => _adjustPanel(editor),
-      EditorTool.text => _textPanel(editor),
+      EditorTool.text =>
+        editor.selectedLayer is BubbleLayer
+            ? _bubblePanel(editor)
+            : _textPanel(editor),
       EditorTool.cutout => _cutoutPanel(editor),
       EditorTool.erase => _erasePanel(),
       EditorTool.frames => _framesPanel(editor),
@@ -479,6 +485,175 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       ],
     );
   }
+
+  // ------------------------------------------------------------ Bubble
+  Widget _bubblePanel(EditorState editor) {
+    final bubble = editor.selectedLayer! as BubbleLayer;
+    if (_editingBubbleId != bubble.id) {
+      _editingBubbleId = bubble.id;
+      _bubbleTextController.value = TextEditingValue(
+        text: bubble.text,
+        selection: TextSelection.collapsed(offset: bubble.text.length),
+      );
+    }
+    final id = bubble.id;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _panelHeader(
+          EditorTool.text,
+          trailing: const _PanelHint('Comic bubble'),
+        ),
+        Row(
+          children: [
+            for (final s in BubbleShape.values) ...[
+              Expanded(
+                child: _segTab(
+                  _bubbleShapeLabel(s),
+                  bubble.shape == s,
+                  AppColors.pink,
+                  () => _controller.updateBubbleLayer(id, shape: s),
+                ),
+              ),
+              if (s != BubbleShape.values.last) const SizedBox(width: 8),
+            ],
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _bubbleTextController,
+          onChanged: (v) => _controller.updateBubbleLayer(id, text: v),
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontFamily: AppFonts.ui,
+            color: AppColors.textPrimary,
+          ),
+          decoration: InputDecoration(
+            hintText: 'Bubble text…',
+            hintStyle: const TextStyle(color: AppColors.textMuted),
+            filled: true,
+            fillColor: AppColors.inputField,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 13,
+              vertical: 11,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: Colors.white.withValues(alpha: 0.1),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: Colors.white.withValues(alpha: 0.1),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _swatchRow(
+          'Fill',
+          bubble.fillColor,
+          (c) => _controller.updateBubbleLayer(
+            id,
+            fillColor: c,
+            textColor: _inkFor(c),
+          ),
+        ),
+        const SizedBox(height: 10),
+        _swatchRow(
+          'Outline',
+          bubble.strokeColor,
+          (c) => _controller.updateBubbleLayer(id, strokeColor: c),
+        ),
+        const SizedBox(height: 4),
+        LabeledSlider(
+          label: 'Tail',
+          value: bubble.tail.dx,
+          min: -1,
+          max: 1,
+          accent: AppColors.pink,
+          valueColor: AppColors.textMuted,
+          valueLabel: bubble.tail.dx < -0.15
+              ? 'left'
+              : (bubble.tail.dx > 0.15 ? 'right' : 'center'),
+          onChanged: (v) => _controller.updateBubbleLayer(
+            id,
+            tail: Offset(v, bubble.tail.dy),
+          ),
+          onChangeEnd: _endSliderEdit,
+        ),
+      ],
+    );
+  }
+
+  String _bubbleShapeLabel(BubbleShape s) => switch (s) {
+    BubbleShape.speech => 'Speech',
+    BubbleShape.thought => 'Thought',
+    BubbleShape.shout => 'Shout',
+  };
+
+  /// A labelled row of 9 color swatches for the bubble fill / outline.
+  Widget _swatchRow(String label, Color selected, ValueChanged<Color> onPick) {
+    const colors = [
+      Colors.white,
+      Color(0xFF111111),
+      AppColors.pink,
+      AppColors.amber,
+      AppColors.green,
+      AppColors.cyan,
+      AppColors.violet,
+      AppColors.rose,
+      AppColors.orange,
+    ];
+    return Row(
+      children: [
+        SizedBox(
+          width: 52,
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontFamily: AppFonts.ui,
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final c in colors)
+                GestureDetector(
+                  onTap: () => onPick(c),
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: c,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: selected == c
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.15),
+                        width: selected == c ? 3 : 2,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Contrasting ink for text on a given fill.
+  Color _inkFor(Color fill) => (fill == Colors.white || fill == AppColors.amber)
+      ? const Color(0xFF14101A)
+      : Colors.white;
 
   // ------------------------------------------------------------ Cut out
   Widget _cutoutPanel(EditorState editor) {
@@ -892,6 +1067,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             ),
             _sheetTile(ctx, Icons.content_paste, 'Paste image', 'paste'),
             _sheetTile(ctx, Icons.title, 'Add text', 'text'),
+            _sheetTile(ctx, Icons.chat_bubble_outline, 'Add bubble', 'bubble'),
             const SizedBox(height: 8),
           ],
         ),
@@ -906,6 +1082,9 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         await _pastePhoto();
       case 'text':
         _controller.addTextLayer();
+      case 'bubble':
+        _controller.addBubbleLayer();
+        _controller.setTool(EditorTool.text);
     }
   }
 
@@ -1030,7 +1209,28 @@ class _LayerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isText = layer is TextLayer;
+    final (Widget badge, String typeLabel) = switch (layer) {
+      TextLayer() => (
+        const Text(
+          'T',
+          style: TextStyle(
+            fontFamily: AppFonts.bangers,
+            fontSize: 16,
+            color: Colors.white,
+          ),
+        ),
+        'Text layer',
+      ),
+      BubbleLayer() => (
+        const Icon(Icons.chat_bubble_outline, size: 18, color: Colors.white),
+        'Bubble layer',
+      ),
+      ImageLayer() => (
+        const Icon(Icons.image_outlined, size: 18, color: Colors.white),
+        'Image layer',
+      ),
+    };
+    final flatBadge = layer is! ImageLayer;
     return Padding(
       padding: const EdgeInsets.only(bottom: 7),
       child: Material(
@@ -1058,24 +1258,11 @@ class _LayerRow extends StatelessWidget {
                   height: 38,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: isText ? AppColors.elevated : null,
-                    gradient: isText ? null : context.sm.logoGradient,
+                    color: flatBadge ? AppColors.elevated : null,
+                    gradient: flatBadge ? null : context.sm.logoGradient,
                     borderRadius: BorderRadius.circular(9),
                   ),
-                  child: isText
-                      ? const Text(
-                          'T',
-                          style: TextStyle(
-                            fontFamily: AppFonts.bangers,
-                            fontSize: 16,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(
-                          Icons.image_outlined,
-                          size: 18,
-                          color: Colors.white,
-                        ),
+                  child: badge,
                 ),
                 const SizedBox(width: 11),
                 Expanded(
@@ -1094,7 +1281,7 @@ class _LayerRow extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        isText ? 'Text layer' : 'Image layer',
+                        typeLabel,
                         style: const TextStyle(
                           fontFamily: AppFonts.ui,
                           fontSize: 10.5,

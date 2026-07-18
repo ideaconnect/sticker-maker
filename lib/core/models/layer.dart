@@ -46,10 +46,14 @@ sealed class Layer {
     return switch (type) {
       'image' => ImageLayer.fromJson(json),
       'text' => TextLayer.fromJson(json),
+      'bubble' => BubbleLayer.fromJson(json),
       _ => throw FormatException('Unknown layer type: $type'),
     };
   }
 }
+
+/// Comic speech-bubble shapes.
+enum BubbleShape { speech, thought, shout }
 
 /// A photo layer, optionally with an alpha mask (from AI cut-out / manual
 /// erase) and per-image color adjustments.
@@ -245,5 +249,147 @@ final class TextLayer extends Layer {
     fontFamily,
     fontSize,
     color,
+  );
+}
+
+/// A comic speech bubble: a vector shape (so it stays crisp at export) with an
+/// optional embedded caption that reflows, a fill/stroke from the palette, and a
+/// [tail] whose tip is positioned in bubble-local coordinates.
+final class BubbleLayer extends Layer {
+  const BubbleLayer({
+    required super.id,
+    required super.name,
+    this.text = 'Woof!',
+    this.shape = BubbleShape.speech,
+    this.fontFamily = 'Bangers',
+    this.fontSize = 26,
+    this.fillColor = const Color(0xFFFFFFFF),
+    this.strokeColor = const Color(0xFF14101A),
+    this.textColor = const Color(0xFF14101A),
+    this.tail = const Offset(-0.28, 0.86),
+    super.transform = LayerTransform.identity,
+    super.visible = true,
+    super.opacity = 1.0,
+  });
+
+  final String text;
+  final BubbleShape shape;
+  final String fontFamily;
+  final double fontSize;
+  final Color fillColor;
+  final Color strokeColor;
+  final Color textColor;
+
+  /// Tail tip in bubble-local normalized coordinates: the body spans roughly
+  /// [-0.5, 0.5] on each axis, so a `dy > 0.5` tip points below the bubble.
+  final Offset tail;
+
+  @override
+  String get type => 'bubble';
+
+  BubbleLayer copyWith({
+    String? id,
+    String? name,
+    LayerTransform? transform,
+    bool? visible,
+    double? opacity,
+    String? text,
+    BubbleShape? shape,
+    String? fontFamily,
+    double? fontSize,
+    Color? fillColor,
+    Color? strokeColor,
+    Color? textColor,
+    Offset? tail,
+  }) {
+    return BubbleLayer(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      transform: transform ?? this.transform,
+      visible: visible ?? this.visible,
+      opacity: opacity ?? this.opacity,
+      text: text ?? this.text,
+      shape: shape ?? this.shape,
+      fontFamily: fontFamily ?? this.fontFamily,
+      fontSize: fontSize ?? this.fontSize,
+      fillColor: fillColor ?? this.fillColor,
+      strokeColor: strokeColor ?? this.strokeColor,
+      textColor: textColor ?? this.textColor,
+      tail: tail ?? this.tail,
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    ...baseJson(),
+    'text': text,
+    'shape': shape.name,
+    'fontFamily': fontFamily,
+    'fontSize': fontSize,
+    'fillColor': fillColor.toARGB32(),
+    'strokeColor': strokeColor.toARGB32(),
+    'textColor': textColor.toARGB32(),
+    'tailDx': tail.dx,
+    'tailDy': tail.dy,
+  };
+
+  factory BubbleLayer.fromJson(Map<String, dynamic> json) {
+    return BubbleLayer(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      transform: LayerTransform.fromJson(
+        (json['transform'] as Map).cast<String, dynamic>(),
+      ),
+      visible: json['visible'] as bool? ?? true,
+      opacity: (json['opacity'] as num?)?.toDouble() ?? 1.0,
+      text: json['text'] as String? ?? '',
+      shape: BubbleShape.values.firstWhere(
+        (s) => s.name == json['shape'],
+        orElse: () => BubbleShape.speech,
+      ),
+      fontFamily: json['fontFamily'] as String? ?? 'Bangers',
+      fontSize: (json['fontSize'] as num?)?.toDouble() ?? 26,
+      fillColor: Color(json['fillColor'] as int? ?? 0xFFFFFFFF),
+      strokeColor: Color(json['strokeColor'] as int? ?? 0xFF14101A),
+      textColor: Color(json['textColor'] as int? ?? 0xFF14101A),
+      tail: Offset(
+        (json['tailDx'] as num?)?.toDouble() ?? -0.28,
+        (json['tailDy'] as num?)?.toDouble() ?? 0.86,
+      ),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is BubbleLayer &&
+      other.id == id &&
+      other.name == name &&
+      other.transform == transform &&
+      other.visible == visible &&
+      other.opacity == opacity &&
+      other.text == text &&
+      other.shape == shape &&
+      other.fontFamily == fontFamily &&
+      other.fontSize == fontSize &&
+      other.fillColor == fillColor &&
+      other.strokeColor == strokeColor &&
+      other.textColor == textColor &&
+      other.tail == tail;
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    transform,
+    visible,
+    opacity,
+    text,
+    shape,
+    fontFamily,
+    fontSize,
+    fillColor,
+    strokeColor,
+    textColor,
+    tail,
   );
 }

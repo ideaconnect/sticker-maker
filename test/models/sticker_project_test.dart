@@ -94,7 +94,7 @@ void main() {
 
   test('Layer.fromJson throws on unknown type', () {
     expect(
-      () => Layer.fromJson(const {'type': 'bubble'}),
+      () => Layer.fromJson(const {'type': 'hologram'}),
       throwsA(isA<FormatException>()),
     );
   });

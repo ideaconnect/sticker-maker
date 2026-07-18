@@ -10,6 +10,7 @@ import '../../../core/rendering/color_matrix.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/sticker_caption.dart';
+import 'bubble_view.dart';
 
 /// Renders a [Frame]'s layers in z-order (bottom → top), mapping the model's
 /// 512-unit logical coordinates onto whatever square size the widget is given.
@@ -72,6 +73,7 @@ class StickerCanvas extends StatelessWidget {
         color: layer.color,
         rotation: 0, // rotation handled by the enclosing Transform
       ),
+      BubbleLayer() => BubbleView(layer: layer, scale: scale),
       ImageLayer() => _imageContent(layer, scale),
     };
   }

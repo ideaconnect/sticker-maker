@@ -11,6 +11,7 @@ import '../../../core/widgets/checkerboard.dart';
 import '../state/editor_controller.dart';
 import '../state/editor_state.dart';
 import '../state/editor_tool.dart';
+import 'bubble_view.dart';
 import 'sticker_canvas.dart';
 
 /// The interactive editing surface: renders the current frame and lets the user
@@ -179,6 +180,7 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
     final s = layer.transform.scale;
     return switch (layer) {
       ImageLayer() => Size(440 * s, 440 * s),
+      BubbleLayer() => kBubbleBaseSize * s,
       TextLayer() => () {
         final tp = TextPainter(
           text: TextSpan(
