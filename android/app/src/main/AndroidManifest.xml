@@ -35,6 +35,18 @@
             android:exported="true"
             android:readPermission="com.whatsapp.sticker.READ" />
 
+        <!-- Grants target apps (Telegram) read access to exported sticker
+             files for the targeted-share flow (sticker_maker/platform). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.share"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/share_paths" />
+        </provider>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
@@ -54,5 +66,10 @@
         <!-- So we can resolve/launch WhatsApp's ENABLE_STICKER_PACK intent (#46). -->
         <package android:name="com.whatsapp"/>
         <package android:name="com.whatsapp.w4b"/>
+        <!-- So we can target Telegram directly with the exported .webm (the
+             guided @Stickers flow) and resolve tg:// deep links. -->
+        <package android:name="org.telegram.messenger"/>
+        <package android:name="org.telegram.messenger.web"/>
+        <package android:name="org.thunderdog.challegram"/>
     </queries>
 </manifest>

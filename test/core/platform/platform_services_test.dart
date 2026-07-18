@@ -47,6 +47,36 @@ void main() {
     expect(args['bytes'], [1, 2]);
   });
 
+  test(
+    'shareToTelegram walks the client fallbacks until one accepts',
+    () async {
+      // First client missing (false), second accepts.
+      mock(
+        (call) =>
+            (call.arguments as Map)['package'] == 'org.telegram.messenger.web',
+      );
+      final ok = await PlatformServices(
+        channel: channel,
+      ).shareToTelegram(['/tmp/a.webm'], 'video/webm');
+      expect(ok, isTrue);
+      expect(calls, hasLength(2), reason: 'stopped at the first success');
+      expect(
+        (calls.last.arguments as Map)['package'],
+        'org.telegram.messenger.web',
+      );
+      expect((calls.first.arguments as Map)['paths'], ['/tmp/a.webm']);
+    },
+  );
+
+  test('shareToTelegram is false when no client is installed', () async {
+    mock((call) => false);
+    final ok = await PlatformServices(
+      channel: channel,
+    ).shareToTelegram(['/tmp/a.webm'], 'video/webm');
+    expect(ok, isFalse);
+    expect(calls.length, PlatformServices.telegramPackages.length);
+  });
+
   test('platform errors degrade to false / null', () async {
     mock((call) => throw PlatformException(code: 'save_failed'));
     final svc = PlatformServices(channel: channel);

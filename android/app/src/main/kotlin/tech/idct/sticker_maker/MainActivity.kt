@@ -52,6 +52,19 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }
+                    // Shares files DIRECTLY to one app (e.g. Telegram), skipping
+                    // the system share sheet — the target app opens its own
+                    // chat picker with the files attached.
+                    "shareToApp" -> {
+                        val paths = call.argument<List<String>>("paths")
+                        val mime = call.argument<String>("mimeType")
+                        val pkg = call.argument<String>("package")
+                        if (paths.isNullOrEmpty() || mime.isNullOrEmpty() || pkg.isNullOrEmpty()) {
+                            result.error("bad_args", "paths, mimeType and package are required", null)
+                        } else {
+                            result.success(shareToApp(paths, mime, pkg))
+                        }
+                    }
                     // Saves bytes into the shared Downloads collection.
                     "saveToDownloads" -> {
                         val name = call.argument<String>("fileName")
@@ -66,6 +79,40 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /**
+     * Fires ACTION_SEND(_MULTIPLE) at [pkg] with content:// URIs from our
+     * FileProvider. Returns false when the app isn't installed / can't handle
+     * it, so Dart can fall back to the system share sheet.
+     */
+    private fun shareToApp(paths: List<String>, mime: String, pkg: String): Boolean {
+        return try {
+            val uris = ArrayList<Uri>(paths.size)
+            for (path in paths) {
+                uris.add(
+                    androidx.core.content.FileProvider.getUriForFile(
+                        this,
+                        "$packageName.share",
+                        File(path),
+                    ),
+                )
+            }
+            val intent = if (uris.size == 1) {
+                Intent(Intent.ACTION_SEND).apply { putExtra(Intent.EXTRA_STREAM, uris[0]) }
+            } else {
+                Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                }
+            }
+            intent.type = mime
+            intent.setPackage(pkg)
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     /** Inserts [bytes] as a new file in the public Downloads collection. */

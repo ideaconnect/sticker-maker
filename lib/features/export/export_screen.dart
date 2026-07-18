@@ -152,25 +152,37 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
         '${dir.path}/${name}_${DateTime.now().millisecondsSinceEpoch}.${sticker.format}',
       );
       await file.writeAsBytes(sticker.bytes);
-      // WebM is a video container — Telegram's @Stickers needs it sent as a
-      // document, which the share sheet handles when the mime says video.
       final mime = sticker.format == 'webm'
           ? 'video/webm'
           : 'image/${sticker.format}';
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path, mimeType: mime)],
-          subject: project.name,
-          text: 'Made with Sticker Maker',
-        ),
-      );
-      if (mounted) {
-        showSmToast(context, 'Shared · ${_formatBytes(sticker.byteLength)}');
-      }
-      // A .webm shared into a chat is just a video — becoming a STICKER
-      // requires Telegram's @Stickers bot. Guide the user there.
-      if (sticker.format == 'webm' && mounted) {
-        await _showTelegramStickerGuide();
+      if (sticker.format == 'webm') {
+        // Skip the system share sheet: hand the .webm straight to Telegram's
+        // own chat picker (Saved Messages is pinned there; the @Stickers chat
+        // works directly too), then guide the sticker-pack steps.
+        final sent = await ref.read(platformServicesProvider).shareToTelegram([
+          file.path,
+        ], mime);
+        if (!sent) {
+          // No Telegram installed — regular share sheet as fallback.
+          await SharePlus.instance.share(
+            ShareParams(
+              files: [XFile(file.path, mimeType: mime)],
+              subject: project.name,
+            ),
+          );
+        }
+        if (mounted) await _showTelegramStickerGuide(sentToTelegram: sent);
+      } else {
+        await SharePlus.instance.share(
+          ShareParams(
+            files: [XFile(file.path, mimeType: mime)],
+            subject: project.name,
+            text: 'Made with Sticker Maker',
+          ),
+        );
+        if (mounted) {
+          showSmToast(context, 'Shared · ${_formatBytes(sticker.byteLength)}');
+        }
       }
     } catch (_) {
       if (mounted) showSmToast(context, "Couldn't export — try again");
@@ -210,8 +222,14 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
 
   /// Post-share guidance: turning the exported .webm into an actual Telegram
   /// sticker goes through @Stickers (`/newvideo`) — Telegram has no API to
-  /// create packs directly from an app.
-  Future<void> _showTelegramStickerGuide() {
+  /// create packs directly from an app. [sentToTelegram] adapts the copy to
+  /// whether the file already landed in Telegram's chat picker.
+  Future<void> _showTelegramStickerGuide({required bool sentToTelegram}) {
+    final intro = sentToTelegram
+        ? 'The file is already attached in Telegram — send it to Saved '
+              'Messages (top of the list) or straight to the @Stickers chat.'
+        : 'Sent to a chat, the .webm plays as a video on a black background — '
+              'a real transparent sticker goes through @Stickers.';
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.card,
@@ -246,14 +264,14 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              const Text(
-                'Sent to a chat, the .webm plays as a video on a black '
-                'background. To get a real transparent sticker:\n'
+              Text(
+                '$intro\n\n'
+                'To publish it as a sticker:\n'
                 '1. Open the @Stickers bot\n'
                 '2. Send /newvideo and a pack title\n'
-                '3. Send the exported .webm as a FILE\n'
+                '3. Forward the .webm to @Stickers as a FILE\n'
                 '4. Pick an emoji, then /publish',
-                style: TextStyle(
+                style: const TextStyle(
                   fontFamily: AppFonts.ui,
                   fontSize: 13,
                   height: 1.55,
