@@ -97,15 +97,17 @@ class BundledSegmentationEngine implements SegmentationEngine {
   }
 
   /// Extracts row-major RGB bytes (3/px) from a decoded [size]×[size] image.
+  /// Uses the *normalized* channels so 16-bit and float source formats convert
+  /// to 8-bit correctly instead of truncating (p.r would be 0…65535 for uint16).
   static Uint8List _rgbBytes(img.Image image, int size) {
     final rgb = Uint8List(size * size * 3);
     var i = 0;
     for (var y = 0; y < size; y++) {
       for (var x = 0; x < size; x++) {
         final p = image.getPixel(x, y);
-        rgb[i++] = p.r.toInt();
-        rgb[i++] = p.g.toInt();
-        rgb[i++] = p.b.toInt();
+        rgb[i++] = (p.rNormalized * 255).round().clamp(0, 255);
+        rgb[i++] = (p.gNormalized * 255).round().clamp(0, 255);
+        rgb[i++] = (p.bNormalized * 255).round().clamp(0, 255);
       }
     }
     return rgb;

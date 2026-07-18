@@ -378,9 +378,15 @@ class EditorController extends Notifier<EditorState> {
     final project = state.project;
     if (project.frames.length <= 1) return; // keep at least one frame
     final frames = [...project.frames]..removeAt(index);
-    final current = project.currentFrameIndex.clamp(0, frames.length - 1);
+    // Keep viewing the same frame: deleting one before the current shifts it
+    // left by one, so decrement to compensate.
+    var current = project.currentFrameIndex;
+    if (index < current) current -= 1;
     _commit(
-      project.copyWith(frames: frames, currentFrameIndex: current),
+      project.copyWith(
+        frames: frames,
+        currentFrameIndex: current.clamp(0, frames.length - 1),
+      ),
       clearSelection: true,
     );
   }

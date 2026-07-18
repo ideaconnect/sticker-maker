@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -69,6 +70,9 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   String? _workingMaskLayerId;
   String? _workingMaskPath;
   Size? _workingImageSize;
+  // Serializes erase strokes so overlapping async applies can't race and lose
+  // dabs (each stroke starts only after the previous one has fully applied).
+  Future<void> _strokeLock = Future<void>.value();
 
   Timer? _saveTimer;
   StickerProject? _pendingSave;
@@ -83,6 +87,12 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
 
   /// Closes the current undo step when a slider drag ends.
   void _endSliderEdit(double _) => _controller.endEdit();
+
+  /// Whether two projects are the same *document* — everything that gets
+  /// persisted except the transient current-frame index (frame navigation and
+  /// playback must not count as edits).
+  bool _sameDocument(StickerProject a, StickerProject b) =>
+      a.id == b.id && a.name == b.name && listEquals(a.frames, b.frames);
 
   /// Debounced auto-save of the document to disk.
   void _scheduleSave(StickerProject project) {
@@ -147,7 +157,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     final editor = ref.watch(editorControllerProvider);
     _repo = ref.read(projectRepositoryProvider);
     ref.listen(editorControllerProvider, (prev, next) {
-      if (prev == null || prev.project != next.project) {
+      // Persist only real document edits — not frame navigation / playback,
+      // which change currentFrameIndex only. Otherwise scrubbing the timeline
+      // (or a playback tick) would rewrite the file and bump it to the top of
+      // Home's "recent" list with no actual edit.
+      if (prev == null || !_sameDocument(prev.project, next.project)) {
         _scheduleSave(next.project);
       }
       // Stop looping playback when the user leaves the Frames tool.
@@ -436,8 +450,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       );
     }
 
-    // Sync the field to the selected layer only when the selection changes.
-    if (_editingTextId != selected.id) {
+    // Resync the field when the selection changes OR when the model text
+    // diverges from the field (e.g. after an undo, which clears the selection
+    // and reverts the text but leaves the field id/content stale).
+    if (_editingTextId != selected.id ||
+        _textController.text != selected.text) {
       _editingTextId = selected.id;
       _textController.value = TextEditingValue(
         text: selected.text,
@@ -552,7 +569,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   // ------------------------------------------------------------ Bubble
   Widget _bubblePanel(EditorState editor) {
     final bubble = editor.selectedLayer! as BubbleLayer;
-    if (_editingBubbleId != bubble.id) {
+    if (_editingBubbleId != bubble.id ||
+        _bubbleTextController.text != bubble.text) {
       _editingBubbleId = bubble.id;
       _bubbleTextController.value = TextEditingValue(
         text: bubble.text,
@@ -799,11 +817,20 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     }
   }
 
+  /// Enqueues an erase stroke onto [_strokeLock] so strokes apply strictly in
+  /// order — overlapping async applies (esp. the cold-cache rebuild-after-await)
+  /// can't interleave and drop each other's dabs.
+  void _applyEraseStroke(List<Offset> pointsLogical) {
+    _strokeLock = _strokeLock
+        .then((_) => _runEraseStroke(pointsLogical))
+        .catchError((Object _) {});
+  }
+
   /// Applies an Erase/Restore brush stroke (points in 512-logical canvas units)
   /// to the selected photo's alpha mask: map into mask pixels, paint, persist
   /// and apply — undoable per stroke. A working mask is cached across dabs so we
   /// don't decode the mask file every time; it reloads on a layer/mask change.
-  Future<void> _applyEraseStroke(List<Offset> pointsLogical) async {
+  Future<void> _runEraseStroke(List<Offset> pointsLogical) async {
     final layer = ref.read(editorControllerProvider).selectedLayer;
     if (layer is! ImageLayer) return;
     try {

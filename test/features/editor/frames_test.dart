@@ -92,6 +92,45 @@ void main() {
       expect(c.read(editorControllerProvider).project.frameCount, 3);
     });
 
+    test(
+      'deleteFrame keeps you on the same frame when an earlier one goes',
+      () {
+        const p = StickerProject(
+          id: 'p',
+          name: 'a',
+          frames: [
+            Frame(
+              id: 'f0',
+              layers: [
+                TextLayer(id: 'a', name: 'A', text: 'A', fontFamily: 'Rubik'),
+              ],
+            ),
+            Frame(
+              id: 'f1',
+              layers: [
+                TextLayer(id: 'b', name: 'B', text: 'B', fontFamily: 'Rubik'),
+              ],
+            ),
+            Frame(
+              id: 'f2',
+              layers: [
+                TextLayer(id: 'c', name: 'C', text: 'C', fontFamily: 'Rubik'),
+              ],
+            ),
+          ],
+        );
+        final c = _container(p);
+        _controllerFor(c)
+          ..selectFrame(1) // viewing B
+          ..deleteFrame(0); // remove A
+
+        final proj = c.read(editorControllerProvider).project;
+        expect(proj.frameCount, 2);
+        expect(proj.currentFrameIndex, 0);
+        expect((proj.currentFrame.layers.first as TextLayer).text, 'B');
+      },
+    );
+
     test('a new layer lands only on the current frame by default', () {
       final c = _container(_threeFrames);
       _controllerFor(c)

@@ -143,6 +143,10 @@ class _MaskedImageState extends State<_MaskedImage> {
   ui.Image? _base;
   ui.Image? _mask;
 
+  /// Bumped on each (re)load so an out-of-order decode from a superseded load
+  /// discards its result instead of clobbering the newer one.
+  int _loadGen = 0;
+
   @override
   void initState() {
     super.initState();
@@ -158,9 +162,11 @@ class _MaskedImageState extends State<_MaskedImage> {
   }
 
   Future<void> _load() async {
+    final gen = ++_loadGen;
     final base = await _decode(widget.imagePath);
     final mask = await _decode(widget.maskPath);
-    if (!mounted) {
+    // Superseded by a newer load (or unmounted): drop this stale result.
+    if (!mounted || gen != _loadGen) {
       base?.dispose();
       mask?.dispose();
       return;
@@ -177,9 +183,12 @@ class _MaskedImageState extends State<_MaskedImage> {
     try {
       final bytes = await File(path).readAsBytes();
       final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      codec.dispose();
-      return frame.image;
+      try {
+        final frame = await codec.getNextFrame();
+        return frame.image;
+      } finally {
+        codec.dispose();
+      }
     } catch (_) {
       return null;
     }

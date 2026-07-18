@@ -157,6 +157,38 @@ void main() {
     expect(find.text('Animation frames'), findsOneWidget);
   });
 
+  testWidgets('undo resyncs the caption field to the reverted text', (
+    tester,
+  ) async {
+    await pumpEditor(tester, project: oneTextProject());
+
+    await tester.tap(find.text('Layers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Caption')); // select the layer
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Text')); // Text tool
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, 'Hi'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, 'Hiya');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.undo));
+    await tester.pumpAndSettle();
+
+    // Reselect the layer (its name reverted to 'Caption') and reopen Text.
+    await tester.tap(find.text('Layers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Caption'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Text'));
+    await tester.pumpAndSettle();
+
+    // The field reflects the reverted model text, not the stale 'Hiya'.
+    expect(find.widgetWithText(TextField, 'Hi'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Hiya'), findsNothing);
+  });
+
   testWidgets('empty project shows the drop-photo placeholder', (tester) async {
     await pumpEditor(
       tester,
