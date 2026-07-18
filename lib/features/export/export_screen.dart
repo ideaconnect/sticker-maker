@@ -16,7 +16,6 @@ import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/sm_toast.dart';
 import '../editor/state/editor_controller.dart';
 import '../editor/widgets/sticker_canvas.dart';
-import '../packs/telegram_links.dart';
 import 'animated_export_service.dart';
 import 'animation_encoder.dart';
 import 'sticker_encoder.dart';
@@ -156,9 +155,15 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
           ? 'video/webm'
           : 'image/${sticker.format}';
       if (sticker.format == 'webm') {
-        // Skip the system share sheet: hand the .webm straight to Telegram's
-        // own chat picker (Saved Messages is pinned there; the @Stickers chat
-        // works directly too), then guide the sticker-pack steps.
+        // Explain the sticker steps FIRST — once Telegram takes over the
+        // screen the user can't read them. Only proceed on "I understand".
+        if (mounted) setState(() => _exporting = false);
+        final proceed = mounted && await _showTelegramStickerGuide() == true;
+        if (!proceed) return;
+
+        // Hand the .webm straight to Telegram's chat picker (Saved Messages is
+        // pinned there; the @Stickers chat works directly too), skipping the
+        // system share sheet.
         //
         // Crucially the mime is a generic FILE type, not video/webm: Telegram
         // routes video/* through its video flow (compression, video player),
@@ -168,7 +173,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
         final sent = await ref.read(platformServicesProvider).shareToTelegram([
           file.path,
         ], docMime);
-        if (!sent) {
+        if (!sent && mounted) {
           // No Telegram installed — regular share sheet as fallback.
           await SharePlus.instance.share(
             ShareParams(
@@ -177,7 +182,6 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
             ),
           );
         }
-        if (mounted) await _showTelegramStickerGuide(sentToTelegram: sent);
       } else {
         await SharePlus.instance.share(
           ShareParams(
@@ -226,20 +230,16 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     }
   }
 
-  /// Post-share guidance: turning the exported .webm into an actual Telegram
-  /// sticker goes through @Stickers (`/newvideo`) — Telegram has no API to
-  /// create packs directly from an app. [sentToTelegram] adapts the copy to
-  /// whether the file already landed in Telegram's chat picker.
-  Future<void> _showTelegramStickerGuide({required bool sentToTelegram}) {
-    final intro = sentToTelegram
-        ? 'The sticker file is attached in Telegram as a document (what '
-              '@Stickers needs) — send it to Saved Messages (top of the list) '
-              'or straight to the @Stickers chat.'
-        : 'A real transparent sticker goes through @Stickers — send it the '
-              '.webm as a file.';
-    return showModalBottomSheet<void>(
+  /// Shown BEFORE handing the .webm to Telegram, so the user knows the steps
+  /// before Telegram takes over the screen. Returns true when they tap
+  /// "I understand" (proceed to share), null/false when dismissed. Turning the
+  /// exported .webm into a real sticker goes through @Stickers (`/newvideo`) —
+  /// Telegram has no API to create packs directly from an app.
+  Future<bool?> _showTelegramStickerGuide() {
+    return showModalBottomSheet<bool>(
       context: context,
       backgroundColor: AppColors.card,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -271,35 +271,27 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
-                '$intro\n\n'
-                'To publish it as a sticker:\n'
-                '1. Open the @Stickers bot\n'
-                '2. Send /newvideo and a pack title\n'
-                '3. Forward the .webm to @Stickers as a FILE\n'
-                '4. Pick an emoji, then /publish',
-                style: const TextStyle(
+              const Text(
+                'Next, Telegram will open with your sticker attached as a '
+                "file. Here's how to turn it into a sticker:\n\n"
+                '1. Send it to Saved Messages (top of the list)\n'
+                '2. Open the @Stickers bot\n'
+                '3. Send /newvideo and a pack title\n'
+                '4. Forward your sticker file from Saved Messages\n'
+                '5. Pick an emoji, then /publish',
+                style: TextStyle(
                   fontFamily: AppFonts.ui,
                   fontSize: 13,
-                  height: 1.55,
+                  height: 1.6,
                   color: AppColors.textSecondary,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
               GradientButton(
-                label: 'Open @Stickers',
-                icon: Icons.open_in_new,
-                onPressed: () async {
-                  final opened = await ref
-                      .read(platformServicesProvider)
-                      .openUri(TelegramLinks.newPackCommand(animated: true));
-                  if (ctx.mounted) {
-                    Navigator.of(ctx).pop();
-                    if (!opened && mounted) {
-                      showSmToast(context, 'Telegram is not installed');
-                    }
-                  }
-                },
+                label: 'I understand',
+                icon: Icons.check_rounded,
+                glowColor: AppColors.cyan,
+                onPressed: () => Navigator.of(ctx).pop(true),
               ),
             ],
           ),
