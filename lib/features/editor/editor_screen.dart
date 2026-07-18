@@ -7,12 +7,14 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../app/router.dart';
+import '../../core/models/frame.dart';
 import '../../core/models/image_adjustments.dart';
 import '../../core/models/layer.dart';
 import '../../core/models/sticker_project.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
+import '../../core/widgets/checkerboard.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/labeled_slider.dart';
 import '../../core/widgets/pill_chip.dart';
@@ -31,6 +33,7 @@ import 'state/editor_controller.dart';
 import 'state/editor_state.dart';
 import 'state/editor_tool.dart';
 import 'widgets/editor_canvas.dart';
+import 'widgets/sticker_canvas.dart';
 
 /// Editor: top bar, model-driven sticker canvas, a contextual panel that swaps
 /// per tool, and the six-tab tool bar. State lives in [editorControllerProvider];
@@ -52,6 +55,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   // Transient tool UI state not yet backed by the model.
   bool _isPlaying = false; // frame playback (M4)
   double _fps = 8; // (M4)
+  Timer? _playTimer;
   bool _eraseMode = true; // erase vs restore (M2)
   bool _softEdges = true;
   double _brushSize = 40;
@@ -100,10 +104,41 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _playTimer?.cancel();
     _flushSave(); // persist any pending edit on the way out (no ref use)
     _textController.dispose();
     _bubbleTextController.dispose();
     super.dispose();
+  }
+
+  // -------------------------------------------------------------- playback
+  void _togglePlayback(EditorState editor) {
+    if (_isPlaying) {
+      _stopPlayback();
+    } else if (editor.project.frameCount > 1) {
+      setState(() => _isPlaying = true);
+      _restartPlayTimer();
+    }
+  }
+
+  void _restartPlayTimer() {
+    _playTimer?.cancel();
+    final ms = (1000 / _fps).round().clamp(20, 1000);
+    _playTimer = Timer.periodic(Duration(milliseconds: ms), (_) {
+      final project = ref.read(editorControllerProvider).project;
+      if (project.frameCount <= 1) {
+        _stopPlayback();
+        return;
+      }
+      final next = (project.currentFrameIndex + 1) % project.frameCount;
+      _controller.selectFrame(next);
+    });
+  }
+
+  void _stopPlayback() {
+    _playTimer?.cancel();
+    _playTimer = null;
+    if (_isPlaying && mounted) setState(() => _isPlaying = false);
   }
 
   @override
@@ -113,6 +148,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     ref.listen(editorControllerProvider, (prev, next) {
       if (prev == null || prev.project != next.project) {
         _scheduleSave(next.project);
+      }
+      // Stop looping playback when the user leaves the Frames tool.
+      if (next.tool != EditorTool.frames && _isPlaying) {
+        _stopPlayback();
       }
     });
     return Scaffold(
@@ -175,6 +214,12 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                     ),
                     if (_hasCutout(editor)) const _CutBadge(),
                     if (_removingBg) const _RemovingOverlay(),
+                    if (editor.tool == EditorTool.frames &&
+                        editor.project.frameCount > 1)
+                      _FrameCounter(
+                        current: editor.project.safeFrameIndex + 1,
+                        total: editor.project.frameCount,
+                      ),
                   ],
                 ),
               ),
@@ -890,7 +935,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             icon: _isPlaying ? Icons.pause : Icons.play_arrow,
             accent: AppColors.orange,
             selected: true,
-            onTap: () => setState(() => _isPlaying = !_isPlaying),
+            onTap: () => _togglePlayback(editor),
           ),
         ),
         SizedBox(
@@ -901,37 +946,12 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (_, i) {
               if (i == frames.length) return _addFrameButton();
-              final active = i == current;
-              return GestureDetector(
+              return _FrameThumb(
+                index: i,
+                frame: frames[i],
+                active: i == current,
                 onTap: () => _controller.selectFrame(i),
-                onLongPress: frames.length > 1
-                    ? () => _controller.deleteFrame(i)
-                    : null,
-                child: Container(
-                  width: 64,
-                  height: 64,
-                  alignment: Alignment.topLeft,
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: active
-                          ? AppColors.orange
-                          : Colors.white.withValues(alpha: 0.08),
-                      width: 2,
-                    ),
-                    color: AppColors.cardAlt,
-                  ),
-                  child: Text(
-                    '${i + 1}',
-                    style: TextStyle(
-                      fontFamily: AppFonts.ui,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: active ? AppColors.orange : AppColors.textMuted,
-                    ),
-                  ),
-                ),
+                onMenu: () => _showFrameMenu(i, frames.length),
               );
             },
           ),
@@ -945,7 +965,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           accent: AppColors.orange,
           valueColor: AppColors.textMuted,
           valueLabel: '${_fps.round()} fps',
-          onChanged: (v) => setState(() => _fps = v),
+          onChanged: (v) {
+            setState(() => _fps = v);
+            if (_isPlaying) _restartPlayTimer();
+          },
         ),
       ],
     );
@@ -967,6 +990,39 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         child: const Icon(Icons.add, color: AppColors.orange),
       ),
     );
+  }
+
+  /// Long-press menu for a frame: duplicate, or delete (when >1 frame).
+  Future<void> _showFrameMenu(int index, int frameCount) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _sheetTile(
+              ctx,
+              Icons.copy_all_outlined,
+              'Duplicate frame',
+              'duplicate',
+            ),
+            if (frameCount > 1)
+              _sheetTile(ctx, Icons.delete_outline, 'Delete frame', 'delete'),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    switch (choice) {
+      case 'duplicate':
+        _controller.duplicateFrame(index);
+      case 'delete':
+        _controller.deleteFrame(index);
+    }
   }
 
   // ------------------------------------------------------------ Layers
@@ -1389,6 +1445,111 @@ class _RemovingOverlay extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "Frame N / M" badge shown on the canvas while the Frames tool is active.
+class _FrameCounter extends StatelessWidget {
+  const _FrameCounter({required this.current, required this.total});
+
+  final int current;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: 12,
+      right: 12,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xB8131019),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.orange.withValues(alpha: 0.4)),
+        ),
+        child: Text(
+          'Frame $current / $total',
+          style: const TextStyle(
+            fontFamily: AppFonts.ui,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: AppColors.orange,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A 64px frame thumbnail in the Frames strip: a live [StickerCanvas] preview
+/// over a checkerboard, an active highlight, and a numbered badge.
+class _FrameThumb extends StatelessWidget {
+  const _FrameThumb({
+    required this.index,
+    required this.frame,
+    required this.active,
+    required this.onTap,
+    required this.onMenu,
+  });
+
+  final int index;
+  final Frame frame;
+  final bool active;
+  final VoidCallback onTap;
+  final VoidCallback onMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onMenu,
+      child: Container(
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active
+                ? AppColors.orange
+                : Colors.white.withValues(alpha: 0.08),
+            width: 2,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const Checkerboard(cell: 6),
+              StickerCanvas(frame: frame),
+              Positioned(
+                top: 3,
+                left: 4,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xB8131019),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${index + 1}',
+                    style: TextStyle(
+                      fontFamily: AppFonts.ui,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: active ? AppColors.orange : AppColors.textMuted,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

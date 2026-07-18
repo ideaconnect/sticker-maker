@@ -358,6 +358,22 @@ class EditorController extends Notifier<EditorState> {
     );
   }
 
+  /// Inserts a copy of frame [index] right after it, and selects the copy.
+  void duplicateFrame(int index) {
+    final project = state.project;
+    if (index < 0 || index >= project.frames.length) return;
+    final source = project.frames[index];
+    final clone = Frame(
+      id: _newId('f'),
+      layers: source.layers.map(_cloneWithNewId).toList(),
+    );
+    final frames = [...project.frames]..insert(index + 1, clone);
+    _commit(
+      project.copyWith(frames: frames, currentFrameIndex: index + 1),
+      clearSelection: true,
+    );
+  }
+
   void rename(String name) => _commit(state.project.copyWith(name: name));
 }
 
