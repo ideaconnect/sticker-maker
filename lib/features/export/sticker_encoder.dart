@@ -1,4 +1,7 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:image/image.dart' as img;
 
 import '../../core/models/frame.dart';
 import 'sticker_renderer.dart';
@@ -54,6 +57,43 @@ abstract final class StickerEncoder {
       bytes: chosen.bytes,
       size: chosen.size,
       format: 'png',
+    );
+  }
+
+  /// Encodes [frames] as an animated GIF at [fps] (looping). Each frame is
+  /// rendered via [StickerRenderer] then combined; GIF's 256-colour palette +
+  /// 1-bit transparency are handled by the encoder. CPU-heavy — a large GIF
+  /// should be offloaded to an isolate by the caller.
+  static Future<EncodedSticker> gif(
+    List<Frame> frames, {
+    int size = 512,
+    double fps = 8,
+  }) async {
+    assert(frames.isNotEmpty, 'need at least one frame');
+    final durationMs = (1000 / fps).round().clamp(20, 10000);
+    img.Image? animation;
+    for (final frame in frames) {
+      final image = await StickerRenderer.renderImage(frame, size: size);
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      if (data == null) throw StateError('failed to rasterize a GIF frame');
+      final frameImage = img.Image.fromBytes(
+        width: size,
+        height: size,
+        bytes: data.buffer,
+        numChannels: 4,
+        frameDuration: durationMs,
+      );
+      if (animation == null) {
+        animation = frameImage;
+      } else {
+        animation.addFrame(frameImage);
+      }
+    }
+    return EncodedSticker(
+      bytes: img.encodeGif(animation!),
+      size: size,
+      format: 'gif',
     );
   }
 

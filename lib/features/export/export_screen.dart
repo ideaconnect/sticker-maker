@@ -1,45 +1,51 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../app/router.dart';
+import '../../core/models/sticker_project.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/checkerboard.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/sm_toast.dart';
-import '../../core/widgets/sticker_caption.dart';
+import '../editor/state/editor_controller.dart';
+import '../editor/widgets/sticker_canvas.dart';
+import 'sticker_encoder.dart';
 
-/// Export screen: preview, static/animated toggle, target picker, and the
-/// export action. Encoders arrive in milestone M5 — this is the shell.
-class ExportScreen extends StatefulWidget {
+/// Export screen: live preview of the current project, static/animated toggle,
+/// target picker, a real size estimate, and export-via-share-sheet (#43/#44).
+/// PNG (transparent) and animated GIF ship now; WebP/WebM land with the native
+/// encoders (#41/#42).
+class ExportScreen extends ConsumerStatefulWidget {
   const ExportScreen({super.key});
 
   @override
-  State<ExportScreen> createState() => _ExportScreenState();
+  ConsumerState<ExportScreen> createState() => _ExportScreenState();
 }
 
-class _ExportScreenState extends State<ExportScreen> {
-  bool _animated = true;
+class _ExportScreenState extends ConsumerState<ExportScreen> {
+  late bool _animated;
   String _target = 'telegram';
   bool _exporting = false;
+  String? _sizeLabel;
+  bool _initialized = false;
 
   static const _targets = <_Target>[
-    _Target(
-      'telegram',
-      'Telegram',
-      'Static + video sticker',
-      AppColors.cyan,
-      'T',
-    ),
+    _Target('telegram', 'Telegram', 'Static + animated', AppColors.cyan, 'T'),
     _Target(
       'whatsapp',
       'WhatsApp',
-      'Sticker pack (.webp)',
+      'Sticker file (.png)',
       AppColors.green,
       'W',
     ),
-    _Target('png', 'PNG', 'Transparent image', AppColors.violet, 'P'),
-    _Target('webp', 'WebP', 'Smaller file size', AppColors.pink, 'WP'),
+    _Target('png', 'PNG', 'Transparent, 1024px', AppColors.violet, 'P'),
+    _Target('webp', 'WebP', 'Smaller (coming soon)', AppColors.pink, 'WP'),
     _Target('gif', 'GIF', 'Animated, shareable', AppColors.amber, 'G'),
   ];
 
@@ -51,17 +57,85 @@ class _ExportScreenState extends State<ExportScreen> {
     'gif': '512 × 512 px',
   };
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    _initialized = true;
+    _animated = ref.read(editorControllerProvider).project.isAnimated;
+    _updateEstimate();
+  }
+
+  bool _useGif(StickerProject project) =>
+      project.isAnimated && _target != 'png' && (_animated || _target == 'gif');
+
+  int _pngSize() => _target == 'png' ? 1024 : 512;
+
+  /// Re-encodes the current selection to show a real size estimate.
+  Future<void> _updateEstimate() async {
+    setState(() => _sizeLabel = null);
+    final project = ref.read(editorControllerProvider).project;
+    try {
+      final sticker = _useGif(project)
+          ? await StickerEncoder.gif(project.frames, size: 512, fps: 12)
+          : await StickerEncoder.png(project.currentFrame, size: _pngSize());
+      if (mounted) {
+        setState(() => _sizeLabel = _formatBytes(sticker.byteLength));
+      }
+    } catch (_) {
+      if (mounted) setState(() => _sizeLabel = null);
+    }
+  }
+
   Future<void> _export() async {
     if (_exporting) return;
+    if (_target == 'webp') {
+      showSmToast(context, 'WebP export is coming soon — try PNG or GIF');
+      return;
+    }
     setState(() => _exporting = true);
-    await Future<void>.delayed(const Duration(milliseconds: 1400));
-    if (!mounted) return;
-    setState(() => _exporting = false);
-    showSmToast(context, 'Export pipeline arrives in M5');
+    try {
+      final project = ref.read(editorControllerProvider).project;
+      final sticker = _useGif(project)
+          ? await StickerEncoder.gif(project.frames, size: 512, fps: 12)
+          : await StickerEncoder.png(project.currentFrame, size: _pngSize());
+      final dir = await getTemporaryDirectory();
+      final name = _sanitize(project.name);
+      final file = File(
+        '${dir.path}/${name}_${DateTime.now().millisecondsSinceEpoch}.${sticker.format}',
+      );
+      await file.writeAsBytes(sticker.bytes);
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'image/${sticker.format}')],
+          subject: project.name,
+          text: 'Made with Sticker Maker',
+        ),
+      );
+      if (mounted) {
+        showSmToast(context, 'Shared · ${_formatBytes(sticker.byteLength)}');
+      }
+    } catch (_) {
+      if (mounted) showSmToast(context, "Couldn't export — try again");
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  static String _sanitize(String name) {
+    final s = name.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_').trim();
+    return s.isEmpty ? 'sticker' : s;
+  }
+
+  static String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    final kb = bytes / 1024;
+    return kb < 100 ? '${kb.toStringAsFixed(1)} KB' : '${kb.round()} KB';
   }
 
   @override
   Widget build(BuildContext context) {
+    final project = ref.watch(editorControllerProvider).project;
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -71,10 +145,10 @@ class _ExportScreenState extends State<ExportScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
                 children: [
-                  _preview(),
+                  _preview(project),
                   const SizedBox(height: 18),
-                  _modeToggle(),
-                  const SizedBox(height: 20),
+                  if (project.isAnimated) _modeToggle(),
+                  if (project.isAnimated) const SizedBox(height: 20),
                   const Text(
                     'SEND TO',
                     style: TextStyle(
@@ -103,7 +177,9 @@ class _ExportScreenState extends State<ExportScreen> {
                         ),
                       ),
                       Text(
-                        _animated ? '~64 KB · WebM/GIF' : '~18 KB · PNG',
+                        _sizeLabel == null
+                            ? 'Estimating…'
+                            : '~$_sizeLabel · ${_useGif(project) ? 'GIF' : 'PNG'}',
                         style: const TextStyle(
                           fontFamily: AppFonts.ui,
                           fontSize: 12.5,
@@ -115,8 +191,8 @@ class _ExportScreenState extends State<ExportScreen> {
                   const SizedBox(height: 16),
                   GradientButton(
                     label: _exporting
-                        ? 'Exporting…'
-                        : 'Export ${_animated ? 'animation' : 'sticker'}',
+                        ? 'Sharing…'
+                        : 'Share ${_useGif(project) ? 'animation' : 'sticker'}',
                     icon: _exporting ? null : Icons.ios_share,
                     busy: _exporting,
                     onPressed: _export,
@@ -164,7 +240,7 @@ class _ExportScreenState extends State<ExportScreen> {
     );
   }
 
-  Widget _preview() {
+  Widget _preview(StickerProject project) {
     return Center(
       child: SizedBox(
         width: 170,
@@ -182,22 +258,12 @@ class _ExportScreenState extends State<ExportScreen> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(22),
-            child: const Stack(
+            child: Stack(
               fit: StackFit.expand,
               children: [
-                Checkerboard(cell: 11),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 22,
-                  child: Center(
-                    child: StickerCaption(
-                      text: 'WOOF!',
-                      fontFamily: AppFonts.bangers,
-                      fontSize: 26,
-                    ),
-                  ),
-                ),
+                const Checkerboard(cell: 11),
+                if (project.frames.isNotEmpty)
+                  StickerCanvas(frame: project.currentFrame),
               ],
             ),
           ),
@@ -216,20 +282,16 @@ class _ExportScreenState extends State<ExportScreen> {
       child: Row(
         children: [
           Expanded(
-            child: _modeTab(
-              'Static',
-              Icons.image_outlined,
-              !_animated,
-              () => setState(() => _animated = false),
-            ),
+            child: _modeTab('Static', Icons.image_outlined, !_animated, () {
+              setState(() => _animated = false);
+              _updateEstimate();
+            }),
           ),
           Expanded(
-            child: _modeTab(
-              'Animated',
-              Icons.gif_box_outlined,
-              _animated,
-              () => setState(() => _animated = true),
-            ),
+            child: _modeTab('Animated', Icons.gif_box_outlined, _animated, () {
+              setState(() => _animated = true);
+              _updateEstimate();
+            }),
           ),
         ],
       ),
@@ -277,7 +339,10 @@ class _ExportScreenState extends State<ExportScreen> {
   Widget _targetCard(_Target t) {
     final selected = _target == t.id;
     return GestureDetector(
-      onTap: () => setState(() => _target = t.id),
+      onTap: () {
+        setState(() => _target = t.id);
+        _updateEstimate();
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(

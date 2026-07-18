@@ -42,6 +42,7 @@ dependencies:
   google_mlkit_subject_segmentation: ^0.1.0
   flutter_onnxruntime: ^1.8.2
   image: ^4.9.1
+  share_plus: ^13.2.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

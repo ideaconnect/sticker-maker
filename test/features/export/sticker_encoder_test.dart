@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:sticker_maker/core/models/frame.dart';
 import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/features/export/sticker_encoder.dart';
@@ -67,6 +68,32 @@ void main() {
       );
       expect(capped.size, StickerEncoder.defaultSizes.last);
       expect(capped.byteLength, lessThanOrEqualTo(big.byteLength));
+    });
+  });
+
+  group('gif', () {
+    test('encodes an animated, multi-frame, looping GIF', () async {
+      const frames = [
+        Frame(
+          id: 'f0',
+          layers: [
+            TextLayer(id: 'a', name: 'A', text: 'A', fontFamily: 'Rubik'),
+          ],
+        ),
+        Frame(
+          id: 'f1',
+          layers: [
+            TextLayer(id: 'b', name: 'B', text: 'B', fontFamily: 'Rubik'),
+          ],
+        ),
+      ];
+      final sticker = await StickerEncoder.gif(frames, size: 32);
+
+      expect(sticker.format, 'gif');
+      expect(String.fromCharCodes(sticker.bytes.sublist(0, 3)), 'GIF');
+      final decoded = img.decodeGif(sticker.bytes);
+      expect(decoded, isNotNull);
+      expect(decoded!.numFrames, 2);
     });
   });
 }
