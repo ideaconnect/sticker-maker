@@ -345,13 +345,16 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   // ------------------------------------------------------------ Adjust
   Widget _adjustPanel(EditorState editor) {
     final selected = editor.selectedLayer;
+    // Adding a photo/text/bubble is reachable right from the default tool —
+    // not only via the Layers tab (#77).
+    final addChip = PillChip(label: 'Add', icon: Icons.add, onTap: _showAddMenu);
     if (selected is! ImageLayer) {
       return Column(
         children: [
-          _panelHeader(EditorTool.adjust),
+          _panelHeader(EditorTool.adjust, trailing: addChip),
           _emptyHint(
-            'Adjustments apply to a photo layer.\nSelect a photo, or add one '
-            'from the Layers tab.',
+            'Adjustments apply to a photo layer.\nSelect a photo, or tap Add '
+            'to import one.',
           ),
         ],
       );
@@ -364,13 +367,23 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       children: [
         _panelHeader(
           EditorTool.adjust,
-          trailing: PillChip(
-            label: 'Reset',
-            onTap: () {
-              _controller.updateImageAdjustments(id, ImageAdjustments.identity);
-              _controller.setOpacity(id, 1);
-              _controller.updateImageOutline(id, width: 0);
-            },
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              addChip,
+              const SizedBox(width: 8),
+              PillChip(
+                label: 'Reset',
+                onTap: () {
+                  _controller.updateImageAdjustments(
+                    id,
+                    ImageAdjustments.identity,
+                  );
+                  _controller.setOpacity(id, 1);
+                  _controller.updateImageOutline(id, width: 0);
+                },
+              ),
+            ],
           ),
         ),
         LabeledSlider(

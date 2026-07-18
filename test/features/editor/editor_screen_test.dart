@@ -3,23 +3,42 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:sticker_maker/core/models/frame.dart';
 import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
 import 'package:sticker_maker/core/theme/app_theme.dart';
 import 'package:sticker_maker/features/editor/editor_screen.dart';
+import 'package:sticker_maker/features/editor/services/image_import.dart';
 import 'package:sticker_maker/features/editor/state/editor_controller.dart';
 import 'package:sticker_maker/features/home/project_repository.dart';
 
 late Directory _tempDir;
 
-Future<void> pumpEditor(WidgetTester tester, {StickerProject? project}) async {
+/// Hands out predetermined asset paths instead of opening a real picker.
+class _FakeImport extends ImageImportService {
+  _FakeImport(this.paths);
+
+  final List<String> paths;
+  int _next = 0;
+
+  @override
+  Future<String?> pickFromGallery() async => paths[_next++ % paths.length];
+}
+
+Future<void> pumpEditor(
+  WidgetTester tester, {
+  StickerProject? project,
+  ImageImportService? importService,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         projectRepositoryProvider.overrideWithValue(
           ProjectRepository(baseDir: _tempDir),
         ),
+        if (importService != null)
+          imageImportServiceProvider.overrideWithValue(importService),
         if (project != null)
           editorControllerProvider.overrideWith(
             () => EditorController(project),
@@ -58,7 +77,13 @@ void main() {
     view.devicePixelRatio = 2.0;
   });
   tearDown(() {
-    if (_tempDir.existsSync()) _tempDir.deleteSync(recursive: true);
+    imageCache.clear();
+    imageCache.clearLiveImages();
+    try {
+      if (_tempDir.existsSync()) _tempDir.deleteSync(recursive: true);
+    } catch (_) {
+      // Windows can briefly keep decoded-file handles open.
+    }
     final view = TestWidgetsFlutterBinding.ensureInitialized()
         .platformDispatcher
         .views
@@ -200,4 +225,63 @@ void main() {
     );
     expect(find.text('Drop your pet photo'), findsOneWidget);
   });
+
+  testWidgets(
+    'photos add from the Adjust tool, auto-number, and delete cleanly (#77)',
+    (tester) async {
+      // Real files, so the canvas renders images (not name placeholders).
+      final paths = ['${_tempDir.path}/one.png', '${_tempDir.path}/two.png'];
+      for (final p in paths) {
+        File(p).writeAsBytesSync(img.encodePng(img.Image(width: 8, height: 8)));
+      }
+      await pumpEditor(
+        tester,
+        project: const StickerProject(
+          id: 'multi',
+          name: 'Multi',
+          frames: [Frame(id: 'f')],
+        ),
+        importService: _FakeImport(paths),
+      );
+
+      // The default Adjust panel offers Add directly — no Layers detour.
+      expect(find.text('Adjust'), findsWidgets);
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Choose photo'));
+      await tester.pumpAndSettle();
+
+      // Import lands on Adjust with the photo selected (Reset chip bound).
+      expect(find.text('Reset'), findsOneWidget);
+
+      // Second photo via the same chip; then inspect the Layers panel.
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Choose photo'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Layers'));
+      await tester.pumpAndSettle();
+      expect(find.text('Photo'), findsOneWidget);
+      expect(find.text('Photo 2'), findsOneWidget);
+
+      // Selecting a specific photo row selects that layer.
+      await tester.tap(find.text('Photo 2'));
+      await tester.pumpAndSettle();
+
+      // Deleting "Photo 2" leaves "Photo" (and its own row) intact.
+      final photo2Row = find
+          .ancestor(of: find.text('Photo 2'), matching: find.byType(InkWell))
+          .first;
+      await tester.tap(
+        find.descendant(
+          of: photo2Row,
+          matching: find.byIcon(Icons.delete_outline),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Photo 2'), findsNothing);
+      expect(find.text('Photo'), findsOneWidget);
+    },
+  );
 }
