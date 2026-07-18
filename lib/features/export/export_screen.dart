@@ -15,12 +15,15 @@ import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/sm_toast.dart';
 import '../editor/state/editor_controller.dart';
 import '../editor/widgets/sticker_canvas.dart';
+import 'animated_export_service.dart';
+import 'animation_encoder.dart';
 import 'sticker_encoder.dart';
 
 /// Export screen: live preview of the current project, static/animated toggle,
 /// target picker, a real size estimate, and export-via-share-sheet (#43/#44).
-/// PNG (transparent) and animated GIF ship now; WebP/WebM land with the native
-/// encoders (#41/#42).
+/// Static PNG/WebP and animated GIF are pure Dart; animated Telegram (.webm
+/// VP9+alpha) and WhatsApp (animated .webp) run through the bundled FFmpeg
+/// encoders (#69 / ADR 0004).
 class ExportScreen extends ConsumerStatefulWidget {
   const ExportScreen({super.key});
 
@@ -33,20 +36,33 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
   String _target = 'telegram';
   bool _exporting = false;
   String? _sizeLabel;
+  String? _sizeFormat; // upper-case format of the last estimate (PNG/WEBM/…)
   bool _initialized = false;
 
   static const _targets = <_Target>[
-    _Target('telegram', 'Telegram', 'Static + animated', AppColors.cyan, 'T'),
+    _Target(
+      'telegram',
+      'Telegram',
+      'Static .webp · video sticker (.webm)',
+      AppColors.cyan,
+      'T',
+    ),
     _Target(
       'whatsapp',
       'WhatsApp',
-      'Sticker file (.webp)',
+      'Static & animated .webp',
       AppColors.green,
       'W',
     ),
     _Target('png', 'PNG', 'Transparent, 1024px', AppColors.violet, 'P'),
     _Target('webp', 'WebP', 'Transparent, lossless', AppColors.pink, 'WP'),
-    _Target('gif', 'GIF', 'Animated, shareable', AppColors.amber, 'G'),
+    _Target(
+      'gif',
+      'GIF',
+      'Animated · Discord, Slack, web',
+      AppColors.amber,
+      'G',
+    ),
   ];
 
   static const _dims = {
@@ -66,17 +82,33 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     _updateEstimate();
   }
 
+  /// GIF is its own honest target (Discord/Slack/web) — messengers get the
+  /// real sticker formats instead of a flattened GIF.
   bool _useGif(StickerProject project) =>
-      project.isAnimated && _target != 'png' && (_animated || _target == 'gif');
+      project.isAnimated && _target == 'gif';
+
+  /// Messenger targets export true animated stickers when the project is
+  /// animated and the Animated mode is on: Telegram → WebM VP9+alpha,
+  /// WhatsApp → animated WebP (#69).
+  bool _useAnimatedSticker(StickerProject project) =>
+      project.isAnimated &&
+      _animated &&
+      (_target == 'telegram' || _target == 'whatsapp');
 
   int _pngSize() => _target == 'png' ? 1024 : 512;
 
-  /// The static output format for the current target: WhatsApp and the WebP
-  /// target export transparent WebP; everything else PNG.
-  bool _staticIsWebp() => _target == 'whatsapp' || _target == 'webp';
-
   /// Encodes the current selection for the chosen target.
   Future<EncodedSticker> _encode(StickerProject project) {
+    if (_useAnimatedSticker(project)) {
+      return ref
+          .read(animatedExportServiceProvider)
+          .encode(
+            project,
+            _target == 'telegram'
+                ? AnimationSpec.telegramWebm
+                : AnimationSpec.whatsappWebp,
+          );
+    }
     if (_useGif(project)) return StickerEncoder.gif(project.frames, fps: 12);
     if (_target == 'whatsapp') {
       // WhatsApp's static cap is 100 KB — downscale WebP to fit.
@@ -96,7 +128,10 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     try {
       final sticker = await _encode(project);
       if (mounted) {
-        setState(() => _sizeLabel = _formatBytes(sticker.byteLength));
+        setState(() {
+          _sizeLabel = _formatBytes(sticker.byteLength);
+          _sizeFormat = sticker.format.toUpperCase();
+        });
       }
     } catch (_) {
       if (mounted) setState(() => _sizeLabel = null);
@@ -115,9 +150,14 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
         '${dir.path}/${name}_${DateTime.now().millisecondsSinceEpoch}.${sticker.format}',
       );
       await file.writeAsBytes(sticker.bytes);
+      // WebM is a video container — Telegram's @Stickers needs it sent as a
+      // document, which the share sheet handles when the mime says video.
+      final mime = sticker.format == 'webm'
+          ? 'video/webm'
+          : 'image/${sticker.format}';
       await SharePlus.instance.share(
         ShareParams(
-          files: [XFile(file.path, mimeType: 'image/${sticker.format}')],
+          files: [XFile(file.path, mimeType: mime)],
           subject: project.name,
           text: 'Made with Sticker Maker',
         ),
@@ -189,11 +229,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                       Text(
                         _sizeLabel == null
                             ? 'Estimating…'
-                            : '~$_sizeLabel · ${_useGif(project)
-                                  ? 'GIF'
-                                  : _staticIsWebp()
-                                  ? 'WEBP'
-                                  : 'PNG'}',
+                            : '~$_sizeLabel · ${_sizeFormat ?? ''}',
                         style: const TextStyle(
                           fontFamily: AppFonts.ui,
                           fontSize: 12.5,
@@ -202,11 +238,25 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                       ),
                     ],
                   ),
+                  if (_target == 'gif') ...[
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Transparent GIFs stay transparent in Discord, Slack and '
+                      'browsers. Telegram & WhatsApp chats convert GIFs to '
+                      'video — use their sticker targets above instead.',
+                      style: TextStyle(
+                        fontFamily: AppFonts.ui,
+                        fontSize: 11.5,
+                        height: 1.45,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   GradientButton(
                     label: _exporting
                         ? 'Sharing…'
-                        : 'Share ${_useGif(project) ? 'animation' : 'sticker'}',
+                        : 'Share ${_useGif(project) || _useAnimatedSticker(project) ? 'animation' : 'sticker'}',
                     icon: _exporting ? null : Icons.ios_share,
                     busy: _exporting,
                     onPressed: _export,
