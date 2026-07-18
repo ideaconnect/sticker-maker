@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,7 @@ import 'package:sticker_maker/core/models/sticker_project.dart';
 import 'package:sticker_maker/core/theme/app_theme.dart';
 import 'package:sticker_maker/features/editor/editor_screen.dart';
 import 'package:sticker_maker/features/editor/state/editor_controller.dart';
+import 'package:sticker_maker/features/editor/widgets/bubble_view.dart';
 import 'package:sticker_maker/features/home/project_repository.dart';
 
 late Directory _tmp;
@@ -92,6 +94,54 @@ void main() {
         ..['shape'] = 'nonsense';
       final restored = Layer.fromJson(json) as BubbleLayer;
       expect(restored.shape, BubbleShape.speech);
+    });
+  });
+
+  group('tail mapping (#78)', () {
+    const size = kBubbleBaseSize;
+
+    test('default tail lands inside the lower band, as before', () {
+      const layer = BubbleLayer(id: 'b', name: 'B'); // tail (-0.28, 0.86)
+      final tip = bubbleTailTip(layer, size);
+      final body = bubbleBodyRect(size);
+      expect(tip.dy, greaterThan(body.bottom));
+      expect(tip.dy, lessThanOrEqualTo(size.height));
+      expect(tip.dx, lessThan(body.center.dx)); // -0.28 → left of center
+    });
+
+    test('a negative dy points the tail ABOVE the body', () {
+      const layer = BubbleLayer(id: 'b', name: 'B', tail: Offset(0.2, -2.5));
+      final tip = bubbleTailTip(layer, size);
+      final body = bubbleBodyRect(size);
+      expect(tip.dy, lessThan(body.top));
+      expect(tip.dy, greaterThanOrEqualTo(0));
+    });
+
+    test('bubbleTailFromLocal inverts bubbleTailTip inside the box', () {
+      const tail = Offset(0.5, 0.4);
+      const layer = BubbleLayer(id: 'b', name: 'B', tail: tail);
+      final tip = bubbleTailTip(layer, size);
+      final roundTripped = bubbleTailFromLocal(tip, size);
+      expect(roundTripped.dx, closeTo(tail.dx, 0.001));
+      expect(roundTripped.dy, closeTo(tail.dy, 0.001));
+    });
+
+    test('every shape paints with tails in all four directions', () {
+      for (final shape in BubbleShape.values) {
+        for (final tail in const [
+          Offset(-0.28, 0.86), // classic below
+          Offset(1.1, 0.1), // right
+          Offset(-1.1, 0.2), // left
+          Offset(0.3, -2.0), // above
+          Offset(0, 0), // degenerate: tip on the body
+        ]) {
+          final recorder = ui.PictureRecorder();
+          BubblePainter(
+            BubbleLayer(id: 'b', name: 'B', shape: shape, tail: tail),
+          ).paint(Canvas(recorder), size);
+          recorder.endRecording().dispose();
+        }
+      }
     });
   });
 

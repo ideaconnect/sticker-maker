@@ -683,22 +683,17 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           bubble.strokeColor,
           (c) => _controller.updateBubbleLayer(id, strokeColor: c),
         ),
-        const SizedBox(height: 4),
-        LabeledSlider(
-          label: 'Tail',
-          value: bubble.tail.dx,
-          min: -1,
-          max: 1,
-          accent: AppColors.pink,
-          valueColor: AppColors.textMuted,
-          valueLabel: bubble.tail.dx < -0.15
-              ? 'left'
-              : (bubble.tail.dx > 0.15 ? 'right' : 'center'),
-          onChanged: (v) => _controller.updateBubbleLayer(
-            id,
-            tail: Offset(v, bubble.tail.dy),
+        const SizedBox(height: 8),
+        // The tail is direct-manipulation now: drag the round knob at its tip
+        // on the canvas — any direction, any shape (#78).
+        const Text(
+          'Drag the dot at the tail tip to aim it — any direction.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: AppFonts.ui,
+            fontSize: 11.5,
+            color: AppColors.textMuted,
           ),
-          onChangeEnd: _endSliderEdit,
         ),
       ],
     );

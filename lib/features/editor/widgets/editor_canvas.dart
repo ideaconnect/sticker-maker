@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -130,12 +131,99 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
                 Center(child: widget.dropPlaceholder)
               else
                 StickerCanvas(frame: editor.currentFrame),
-              if (selected != null && editor.tool != EditorTool.frames)
+              if (selected != null && editor.tool != EditorTool.frames) ...[
                 _selectionOverlay(selected, scale),
+                // Bubbles get a draggable knob at the tail tip (#78).
+                if (selected is BubbleLayer) _tailHandle(selected, scale),
+              ],
             ],
           ),
         );
       },
+    );
+  }
+
+  // ------------------------------------------------------------ tail handle
+  /// The bubble's tail tip in this widget's pixel space.
+  Offset _tailTipPx(BubbleLayer layer, double scale) {
+    final t = layer.transform;
+    final local =
+        bubbleTailTip(layer, kBubbleBaseSize) -
+        Offset(kBubbleBaseSize.width / 2, kBubbleBaseSize.height / 2);
+    final scaled = local * t.scale;
+    final cosA = math.cos(t.rotation);
+    final sinA = math.sin(t.rotation);
+    final rotated = Offset(
+      scaled.dx * cosA - scaled.dy * sinA,
+      scaled.dx * sinA + scaled.dy * cosA,
+    );
+    return (t.position + rotated) * scale;
+  }
+
+  Widget _tailHandle(BubbleLayer layer, double scale) {
+    const touch = 15.0; // touch radius in screen px
+    final px = _tailTipPx(layer, scale);
+    return Positioned(
+      left: px.dx - touch,
+      top: px.dy - touch,
+      width: touch * 2,
+      height: touch * 2,
+      child: RawGestureDetector(
+        behavior: HitTestBehavior.opaque,
+        gestures: <Type, GestureRecognizerFactory>{
+          _ImmediatePanRecognizer:
+              GestureRecognizerFactoryWithHandlers<_ImmediatePanRecognizer>(
+                _ImmediatePanRecognizer.new,
+                (r) {
+                  r.onUpdate = (d) =>
+                      _dragTail(layer.id, d.globalPosition, scale);
+                  r.onEnd = (_) => _controller.endEdit();
+                },
+              ),
+        },
+        child: Center(
+          child: Container(
+            width: 11,
+            height: 11,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.cyan,
+              border: Border.all(color: const Color(0xFF131019), width: 2),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Maps a drag position back through the layer transform into the bubble's
+  /// normalized tail space and applies it (coalesced into one undo step).
+  void _dragTail(String layerId, Offset globalPos, double scale) {
+    final canvasBox = context.findRenderObject() as RenderBox?;
+    final layer = ref
+        .read(editorControllerProvider)
+        .layers
+        .whereType<BubbleLayer>()
+        .where((l) => l.id == layerId)
+        .firstOrNull;
+    if (canvasBox == null || layer == null) return;
+    final t = layer.transform;
+    final logical = canvasBox.globalToLocal(globalPos) / scale;
+    final rel = logical - t.position;
+    final cosA = math.cos(-t.rotation);
+    final sinA = math.sin(-t.rotation);
+    final unrotated =
+        Offset(
+          rel.dx * cosA - rel.dy * sinA,
+          rel.dx * sinA + rel.dy * cosA,
+        ) /
+        t.scale;
+    final local =
+        unrotated +
+        Offset(kBubbleBaseSize.width / 2, kBubbleBaseSize.height / 2);
+    _controller.updateBubbleLayer(
+      layerId,
+      tail: bubbleTailFromLocal(local, kBubbleBaseSize),
     );
   }
 
@@ -283,6 +371,16 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
         ),
       ),
     );
+  }
+}
+
+/// Wins the gesture arena on pointer-down, so a drag that starts on the tail
+/// knob can never lose to the canvas-wide scale recognizer (#78).
+class _ImmediatePanRecognizer extends PanGestureRecognizer {
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    resolve(GestureDisposition.accepted);
   }
 }
 

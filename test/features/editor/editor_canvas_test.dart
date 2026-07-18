@@ -9,6 +9,7 @@ import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
 import 'package:sticker_maker/core/theme/app_theme.dart';
 import 'package:sticker_maker/features/editor/state/editor_controller.dart';
+import 'package:sticker_maker/features/editor/widgets/bubble_view.dart';
 import 'package:sticker_maker/features/editor/widgets/editor_canvas.dart';
 
 StickerProject centeredImage() => const StickerProject(
@@ -151,5 +152,55 @@ void main() {
     await tester.tapAt(topLeft + const Offset(256 * scale, 256 * scale));
     await tester.pumpAndSettle();
     expect(c.read(editorControllerProvider).selectedLayerId, 'img');
+  });
+
+  testWidgets('dragging the tail handle re-aims the bubble tail (#78)', (
+    tester,
+  ) async {
+    final c = await pumpCanvas(
+      tester,
+      const StickerProject(
+        id: 'p',
+        name: 'P',
+        frames: [
+          Frame(
+            id: 'f',
+            layers: [BubbleLayer(id: 'bub', name: 'B')],
+          ),
+        ],
+      ),
+    );
+
+    // Select the bubble so its selection UI (incl. the tail knob) shows.
+    await tester.tap(find.byType(EditorCanvas));
+    await tester.pumpAndSettle();
+    expect(c.read(editorControllerProvider).selectedLayerId, 'bub');
+
+    BubbleLayer bubble() =>
+        c.read(editorControllerProvider).layers.single as BubbleLayer;
+    final before = bubble();
+    const canvasScale = 320 / 512;
+
+    // The tail tip in canvas px: bubble box centered at (256,256) logical.
+    final tipLocal = bubbleTailTip(before, kBubbleBaseSize);
+    final tipLogical =
+        const Offset(256, 256) +
+        (tipLocal -
+            Offset(kBubbleBaseSize.width / 2, kBubbleBaseSize.height / 2));
+    final start =
+        tester.getTopLeft(find.byType(EditorCanvas)) + tipLogical * canvasScale;
+
+    // Drag the knob upward — the tail should flip above the body (dy < 0)
+    // and the bubble itself must NOT move (the handle wins the gesture).
+    await tester.dragFrom(start, const Offset(0, -110 * canvasScale));
+    await tester.pumpAndSettle();
+
+    expect(bubble().tail.dy, lessThan(0));
+    expect(bubble().transform.position, before.transform.position);
+    expect(
+      c.read(editorControllerProvider.notifier).canUndo,
+      isTrue,
+      reason: 'the drag lands as one undoable edit',
+    );
   });
 }

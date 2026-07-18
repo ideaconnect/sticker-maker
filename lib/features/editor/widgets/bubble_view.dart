@@ -5,8 +5,43 @@ import 'package:flutter/material.dart';
 import '../../../core/models/layer.dart';
 
 /// Base logical size of a bubble's bounding box (before the layer's own scale).
-/// The body occupies the upper portion; the tail draws into the lower band.
+/// The body occupies the upper portion; the tail draws into the lower band by
+/// default, but may point any direction (#78).
 const Size kBubbleBaseSize = Size(210, 168);
+
+/// Tail tip in box-pixel space from the normalized [BubbleLayer.tail].
+/// dx is in body-half-widths from the body center; dy is in lower-band units
+/// from the body's bottom (negative values reach up past the body). The tip is
+/// clamped to the box, not the body, so tails can point sideways or up.
+Offset bubbleTailTip(BubbleLayer layer, Size size) {
+  final body = bubbleBodyRect(size);
+  final cx = body.center.dx + layer.tail.dx * (body.width / 2);
+  final ty = body.bottom + layer.tail.dy * (size.height - body.bottom);
+  return Offset(
+    cx.clamp(0.0, size.width),
+    ty.clamp(0.0, size.height),
+  );
+}
+
+/// The bubble body rect within a box of [size] (upper ~68%, inset).
+Rect bubbleBodyRect(Size size) => Rect.fromLTWH(
+  size.width * 0.06,
+  size.height * 0.05,
+  size.width * 0.88,
+  size.height * 0.63,
+);
+
+/// Inverse of [bubbleTailTip]: converts a box-pixel point back to the
+/// normalized tail value (clamped to what the box can display).
+Offset bubbleTailFromLocal(Offset local, Size size) {
+  final body = bubbleBodyRect(size);
+  final dx = (local.dx - body.center.dx) / (body.width / 2);
+  final dy = (local.dy - body.bottom) / (size.height - body.bottom);
+  // The box clamps the tip anyway — mirror those limits in normalized space.
+  final dxMax = (size.width - body.center.dx) / (body.width / 2);
+  final dyMin = (0 - body.bottom) / (size.height - body.bottom);
+  return Offset(dx.clamp(-dxMax, dxMax), dy.clamp(dyMin, 1.0));
+}
 
 /// Renders a [BubbleLayer] as crisp vector paths (a shape body + tail) with a
 /// centered, reflowing caption. Sized in logical units × [scale]; the layer's
@@ -21,12 +56,7 @@ class BubbleView extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = kBubbleBaseSize * scale;
     // The caption sits inside the body (upper ~68% of the box), padded.
-    final bodyRect = Rect.fromLTWH(
-      size.width * 0.06,
-      size.height * 0.05,
-      size.width * 0.88,
-      size.height * 0.63,
-    );
+    final bodyRect = bubbleBodyRect(size);
     return SizedBox(
       width: size.width,
       height: size.height,
@@ -64,16 +94,11 @@ class BubblePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final body = Rect.fromLTWH(
-      size.width * 0.06,
-      size.height * 0.05,
-      size.width * 0.88,
-      size.height * 0.63,
-    );
+    final body = bubbleBodyRect(size);
     final path = switch (layer.shape) {
       BubbleShape.speech => _speech(body, size),
       BubbleShape.thought => _thought(body, size),
-      BubbleShape.shout => _shout(body),
+      BubbleShape.shout => _shout(body, size),
     };
 
     final fill = Paint()
@@ -95,28 +120,44 @@ class BubblePainter extends CustomPainter {
     }
   }
 
-  /// Tail tip in pixel space from the normalized [BubbleLayer.tail].
-  Offset _tailTip(Rect body, Size size) {
-    final halfW = body.width / 2;
-    final cx = body.center.dx + layer.tail.dx * halfW;
-    final ty = body.bottom + layer.tail.dy * (size.height - body.bottom);
-    return Offset(
-      cx.clamp(body.left, body.right),
-      ty.clamp(body.bottom, size.height),
-    );
+  Offset _tailTip(Size size) => bubbleTailTip(layer, size);
+
+  /// The point where the center→[tip] ray leaves the body ellipse, used to
+  /// anchor tails/dots for any direction.
+  static Offset _ellipseEdge(Rect body, Offset tip) {
+    final d = tip - body.center;
+    if (d.distance < 1) return body.bottomCenter;
+    final rx = body.width / 2;
+    final ry = body.height / 2;
+    final k = 1 / math.sqrt((d.dx * d.dx) / (rx * rx) + (d.dy * d.dy) / (ry * ry));
+    return body.center + d * k;
+  }
+
+  /// A triangular tail from just inside the body edge to [tip], unioned with
+  /// the body path so any direction yields one clean outline (#78).
+  static Path _tailTriangle(Rect body, Offset tip, {double halfWidth = 0}) {
+    final edge = _ellipseEdge(body, tip);
+    final d = tip - edge;
+    if (d.distance < 4) return Path();
+    final unit = d / d.distance;
+    final perp = Offset(-unit.dy, unit.dx);
+    final half = halfWidth > 0 ? halfWidth : body.width * 0.12;
+    // Pull the base inward so the union fully swallows it.
+    final base = edge - unit * math.min(14, d.distance / 2);
+    return Path()
+      ..moveTo(base.dx + perp.dx * half, base.dy + perp.dy * half)
+      ..lineTo(tip.dx, tip.dy)
+      ..lineTo(base.dx - perp.dx * half, base.dy - perp.dy * half)
+      ..close();
   }
 
   Path _speech(Rect body, Size size) {
     final r = Radius.circular(body.height * 0.42);
-    final path = Path()..addRRect(RRect.fromRectAndRadius(body, r));
-    // Triangular tail from the bottom edge to the tip.
-    final tip = _tailTip(body, size);
-    final baseHalf = body.width * 0.12;
-    path.moveTo(tip.dx - baseHalf, body.bottom - 2);
-    path.lineTo(tip.dx, tip.dy);
-    path.lineTo(tip.dx + baseHalf, body.bottom - 2);
-    path.close();
-    return path;
+    final bodyPath = Path()..addRRect(RRect.fromRectAndRadius(body, r));
+    final tail = _tailTriangle(body, _tailTip(size));
+    return tail.getBounds().isEmpty
+        ? bodyPath
+        : Path.combine(PathOperation.union, bodyPath, tail);
   }
 
   Path _thought(Rect body, Size size) {
@@ -130,23 +171,26 @@ class BubblePainter extends CustomPainter {
     Paint fill,
     Paint stroke,
   ) {
-    final tip = _tailTip(body, size);
+    final tip = _tailTip(size);
+    // The chain starts where the tail leaves the body — following the tail's
+    // direction instead of always hanging from bottom-center (#78).
+    final start = _ellipseEdge(body, tip);
     for (var i = 0; i < 3; i++) {
       final t = (i + 1) / 4;
-      final c = Offset.lerp(body.bottomCenter, tip, t)!;
+      final c = Offset.lerp(start, tip, t)!;
       final rad = body.height * 0.09 * (1 - t * 0.5);
       canvas.drawCircle(c, rad, fill);
       canvas.drawCircle(c, rad, stroke);
     }
   }
 
-  Path _shout(Rect body) {
+  Path _shout(Rect body, Size size) {
     // Spiky "burst" star around the body ellipse.
     final center = body.center;
     final rx = body.width / 2;
     final ry = body.height / 2;
     const points = 14;
-    final path = Path();
+    final star = Path();
     for (var i = 0; i < points * 2; i++) {
       final a = math.pi * i / points - math.pi / 2;
       final spike = i.isEven ? 1.0 : 0.72;
@@ -155,12 +199,32 @@ class BubblePainter extends CustomPainter {
         center.dy + math.sin(a) * ry * spike,
       );
       if (i == 0) {
-        path.moveTo(p.dx, p.dy);
+        star.moveTo(p.dx, p.dy);
       } else {
-        path.lineTo(p.dx, p.dy);
+        star.lineTo(p.dx, p.dy);
       }
     }
-    return path..close();
+    star.close();
+
+    // A jagged lightning-style tail — shout no longer ignores the tail (#78).
+    final tip = _tailTip(size);
+    final edge = _ellipseEdge(body, tip);
+    final d = tip - edge;
+    if (d.distance < 10) return star;
+    final unit = d / d.distance;
+    final perp = Offset(-unit.dy, unit.dx);
+    final half = body.width * 0.10;
+    final base = edge - unit * math.min(14, d.distance / 2);
+    final kinkOut = Offset.lerp(base, tip, 0.55)! + perp * (half * 0.55);
+    final kinkBack = Offset.lerp(base, tip, 0.45)! - perp * (half * 0.55);
+    final tail = Path()
+      ..moveTo(base.dx + perp.dx * half, base.dy + perp.dy * half)
+      ..lineTo(kinkOut.dx, kinkOut.dy)
+      ..lineTo(tip.dx, tip.dy)
+      ..lineTo(kinkBack.dx, kinkBack.dy)
+      ..lineTo(base.dx - perp.dx * half, base.dy - perp.dy * half)
+      ..close();
+    return Path.combine(PathOperation.union, star, tail);
   }
 
   @override
