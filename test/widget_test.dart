@@ -88,6 +88,17 @@ void main() {
     expect(find.text('WhatsApp'), findsOneWidget);
   });
 
+  testWidgets('Home "See all" opens the all-stickers screen', (tester) async {
+    await pumpApp(tester);
+
+    await tester.tap(find.text('See all'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('All stickers'), findsOneWidget);
+    // No saved projects in this test → empty state.
+    expect(find.text('No stickers yet'), findsOneWidget);
+  });
+
   testWidgets('Home "Sticker packs" opens the packs manager', (tester) async {
     await pumpApp(tester);
 

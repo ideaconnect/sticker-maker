@@ -6,6 +6,7 @@ import '../features/about/privacy_screen.dart';
 import '../features/editor/editor_screen.dart';
 import '../features/export/export_screen.dart';
 import '../features/gallery/gallery_screen.dart';
+import '../features/home/all_projects_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/onboarding/onboarding_screen.dart';
 import '../features/packs/pack_detail_screen.dart';
@@ -17,6 +18,7 @@ abstract final class Routes {
   Routes._();
   static const home = 'home';
   static const onboarding = 'onboarding';
+  static const allProjects = 'allProjects';
   static const editor = 'editor';
   static const export = 'export';
   static const gallery = 'gallery';
@@ -37,6 +39,11 @@ GoRouter createAppRouter({String initialLocation = '/'}) => GoRouter(
       path: '/',
       name: Routes.home,
       builder: (context, state) => const HomeScreen(),
+    ),
+    GoRoute(
+      path: '/projects',
+      name: Routes.allProjects,
+      builder: (context, state) => const AllProjectsScreen(),
     ),
     GoRoute(
       path: '/onboarding',
