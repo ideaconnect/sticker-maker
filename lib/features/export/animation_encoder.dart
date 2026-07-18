@@ -1,0 +1,150 @@
+import 'dart:typed_data';
+
+/// Per-target constraints for an animated sticker. Enforced in pure Dart around
+/// the native encode (see docs/decisions/0002-animated-encoders.md).
+class AnimationSpec {
+  const AnimationSpec({
+    required this.format,
+    required this.maxBytes,
+    this.maxEdge = 512,
+    this.maxFps = 30,
+    this.maxSeconds,
+    this.minFrameMs = 0,
+    this.loop = true,
+  });
+
+  /// `webp` (WhatsApp) or `webm` (Telegram VP9).
+  final String format;
+  final int maxBytes;
+  final int maxEdge;
+  final double maxFps;
+  final double? maxSeconds;
+  final int minFrameMs;
+  final bool loop;
+
+  /// WhatsApp animated sticker: 512², ≤ 500 KB, ≤ 10 s, frames ≥ 8 ms.
+  static const whatsappWebp = AnimationSpec(
+    format: 'webp',
+    maxBytes: 500 * 1024,
+    maxSeconds: 10,
+    minFrameMs: 8,
+  );
+
+  /// Telegram video sticker: 512², ≤ 256 KB, ≤ 3 s, ≤ 30 fps, no audio, VP9.
+  static const telegramWebm = AnimationSpec(
+    format: 'webm',
+    maxBytes: 256 * 1024,
+    maxSeconds: 3,
+  );
+}
+
+/// One rendered frame handed to the encoder: straight-alpha RGBA bytes
+/// (`width*height*4`) plus how long it shows.
+class RgbaFrame {
+  const RgbaFrame({
+    required this.bytes,
+    required this.width,
+    required this.height,
+    required this.durationMs,
+  });
+
+  final Uint8List bytes;
+  final int width;
+  final int height;
+  final int durationMs;
+}
+
+/// Which source frames to keep and how long each shows, after applying an
+/// [AnimationSpec]'s fps / duration / min-frame caps. Pure planning — the input
+/// to the (device) native encoders.
+class FramePlan {
+  const FramePlan({required this.frameIndices, required this.frameDurationMs});
+
+  final List<int> frameIndices;
+  final int frameDurationMs;
+
+  int get frameCount => frameIndices.length;
+  double get totalSeconds => frameCount * frameDurationMs / 1000;
+}
+
+/// Pure frame-timing planner: caps fps, clamps the per-frame duration to the
+/// spec's minimum, and truncates to the max duration by keeping the leading
+/// frames. Host-unit-testable; no rendering or native code.
+abstract final class AnimationPlanner {
+  AnimationPlanner._();
+
+  static FramePlan plan(int frameCount, double fps, AnimationSpec spec) {
+    assert(frameCount > 0, 'need at least one frame');
+    final effectiveFps = fps.clamp(1.0, spec.maxFps);
+    final durationMs = (1000 / effectiveFps).round().clamp(
+      spec.minFrameMs == 0 ? 1 : spec.minFrameMs,
+      10000,
+    );
+    var count = frameCount;
+    final maxSeconds = spec.maxSeconds;
+    if (maxSeconds != null) {
+      final maxFrames = (maxSeconds * 1000 / durationMs).floor().clamp(
+        1,
+        frameCount,
+      );
+      if (maxFrames < count) count = maxFrames;
+    }
+    return FramePlan(
+      frameIndices: [for (var i = 0; i < count; i++) i],
+      frameDurationMs: durationMs,
+    );
+  }
+}
+
+/// The single native seam for animated encoding. Implementations
+/// (`LibWebpAnimationEncoder`, `Vp9WebmEncoder`) are device-only (dart:ffi);
+/// tests inject [FakeAnimationEncoder]. Mirrors `SegmentationEngine`.
+abstract interface class AnimationEncoder {
+  String get id;
+  String get format;
+
+  /// Whether the native encoder is usable on this device right now. Must not
+  /// throw — returns false on any uncertainty (so the export UI can degrade
+  /// gracefully until the native library ships).
+  Future<bool> isAvailable();
+
+  /// Encodes [frames] at [quality] (0…100 for WebP; a bitrate/CQ knob for VP9).
+  Future<Uint8List> encode(
+    List<RgbaFrame> frames, {
+    required int quality,
+    required bool loop,
+  });
+}
+
+/// Test double: records the last call and returns canned bytes whose length is
+/// `frameCount * quality` so byte-budget searches are deterministic.
+class FakeAnimationEncoder implements AnimationEncoder {
+  FakeAnimationEncoder({
+    this.id = 'fake',
+    this.format = 'webp',
+    this.available = true,
+  });
+
+  @override
+  final String id;
+  @override
+  final String format;
+  final bool available;
+
+  int? lastQuality;
+  int? lastFrameCount;
+
+  @override
+  Future<bool> isAvailable() async => available;
+
+  @override
+  Future<Uint8List> encode(
+    List<RgbaFrame> frames, {
+    required int quality,
+    required bool loop,
+  }) async {
+    lastQuality = quality;
+    lastFrameCount = frames.length;
+    return Uint8List(frames.length * quality);
+  }
+}
