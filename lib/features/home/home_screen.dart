@@ -11,6 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
 import '../../core/widgets/checkerboard.dart';
+import '../about/about_sheet.dart';
 import '../editor/state/editor_controller.dart';
 import '../editor/widgets/sticker_canvas.dart';
 import '../templates/template_picker.dart';
@@ -206,24 +207,29 @@ class _Header extends StatelessWidget {
           ],
         ),
         const Spacer(),
-        Container(
-          width: 38,
-          height: 38,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppColors.chipSurface,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.08),
-              width: 1.5,
-            ),
-          ),
-          child: const Text(
-            'D',
-            style: TextStyle(
-              fontFamily: AppFonts.ui,
-              fontWeight: FontWeight.w700,
-              color: AppColors.violetLight,
+        Semantics(
+          button: true,
+          label: 'About and settings',
+          child: InkWell(
+            onTap: () => showAboutSheet(context),
+            customBorder: const CircleBorder(),
+            child: Container(
+              width: 38,
+              height: 38,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.chipSurface,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  width: 1.5,
+                ),
+              ),
+              child: const Icon(
+                Icons.more_horiz,
+                size: 20,
+                color: AppColors.violetLight,
+              ),
             ),
           ),
         ),

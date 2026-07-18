@@ -70,6 +70,14 @@ flutter:
     # On-device segmentation fallback weights (#28). The .onnx is added
     # out-of-band (see assets/models/README.md); the dir ships regardless.
     - assets/models/
+    # Bundled font license texts — shipped in-app (registered into
+    # LicenseRegistry) as SIL OFL / Apache-2.0 require. See about/bundled_licenses.dart.
+    - assets/fonts/OFL-PlusJakartaSans.txt
+    - assets/fonts/OFL-Fredoka.txt
+    - assets/fonts/OFL-Bangers.txt
+    - assets/fonts/LICENSE-LuckiestGuy-Apache.txt
+    - assets/fonts/OFL-Pacifico.txt
+    - assets/fonts/OFL-Rubik.txt
 
   # Bundled OFL/Apache fonts (offline; see assets/fonts/ for license files).
   fonts:

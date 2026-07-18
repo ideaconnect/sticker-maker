@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/about/licenses_screen.dart';
+import '../features/about/privacy_screen.dart';
 import '../features/editor/editor_screen.dart';
 import '../features/export/export_screen.dart';
 import '../features/gallery/gallery_screen.dart';
@@ -20,6 +22,8 @@ abstract final class Routes {
   static const gallery = 'gallery';
   static const packs = 'packs';
   static const packDetail = 'packDetail';
+  static const privacy = 'privacy';
+  static const licenses = 'licenses';
 }
 
 /// Builds the app's [GoRouter]. Home → Editor → Export is a push-style
@@ -59,6 +63,16 @@ GoRouter createAppRouter({String initialLocation = '/'}) => GoRouter(
       name: Routes.packDetail,
       builder: (context, state) =>
           PackDetailScreen(packId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/privacy',
+      name: Routes.privacy,
+      builder: (context, state) => const PrivacyScreen(),
+    ),
+    GoRoute(
+      path: '/licenses',
+      name: Routes.licenses,
+      builder: (context, state) => const LicensesScreen(),
     ),
     // Developer-only design-system gallery: never registered in release builds.
     if (kDebugMode)
