@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -16,6 +17,10 @@ import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/sm_toast.dart';
 import '../editor/state/editor_controller.dart';
 import '../editor/widgets/sticker_canvas.dart';
+import '../home/project_repository.dart';
+import '../packs/pack_dialogs.dart';
+import '../packs/pack_repository.dart';
+import '../packs/sticker_pack.dart';
 import 'animated_export_service.dart';
 import 'animation_encoder.dart';
 import 'sticker_encoder.dart';
@@ -88,13 +93,14 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
   bool _useGif(StickerProject project) =>
       project.isAnimated && _target == 'gif';
 
-  /// Messenger targets export true animated stickers when the project is
-  /// animated and the Animated mode is on: Telegram → WebM VP9+alpha,
-  /// WhatsApp → animated WebP (#69).
+  /// Messenger targets export true animated stickers: Telegram → WebM
+  /// VP9+alpha (when the Animated mode is on), WhatsApp → animated WebP (#69).
+  /// WhatsApp ignores the Static/Animated toggle: packs are typed by the
+  /// project itself (all-static or all-animated, see StickerPack), so an
+  /// animated project always ships animated there — the toggle is hidden too.
   bool _useAnimatedSticker(StickerProject project) =>
       project.isAnimated &&
-      _animated &&
-      (_target == 'telegram' || _target == 'whatsapp');
+      (_target == 'whatsapp' || (_animated && _target == 'telegram'));
 
   int _pngSize() => _target == 'png' ? 1024 : 512;
 
@@ -141,6 +147,13 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
 
   Future<void> _export() async {
     if (_exporting) return;
+    // WhatsApp has no single-file sticker hand-off (unlike Telegram's
+    // @Stickers): the OS only serves stickers from an installed *pack of 3+*.
+    // So "Add to WhatsApp" routes through the pack builder instead of a share.
+    if (_target == 'whatsapp') {
+      await _addToWhatsAppPack();
+      return;
+    }
     setState(() => _exporting = true);
     try {
       final project = ref.read(editorControllerProvider).project;
@@ -228,6 +241,228 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  /// Sentinel returned by [_showWhatsAppPackSheet] for "create a new pack".
+  static const _newPackChoice = '__new_pack__';
+
+  /// WhatsApp only serves stickers from an installed *pack of at least 3*, so a
+  /// lone sticker can't cross over like Telegram's single-file @Stickers flow.
+  /// Instead we persist this design and let the user drop it into a new or
+  /// existing pack, then finish in the pack screen where "Add to WhatsApp"
+  /// installs the whole pack via the ContentProvider (#46).
+  Future<void> _addToWhatsAppPack() async {
+    setState(() => _exporting = true);
+    try {
+      final project = ref.read(editorControllerProvider).project;
+      // Persist so the pack can reference it by id. The editor auto-saves on a
+      // debounce; force it now so a just-made design is definitely on disk.
+      await ref
+          .read(projectRepositoryProvider)
+          .save(project.copyWith(updatedAt: DateTime.now()));
+      if (!mounted) return;
+      ref.invalidate(savedProjectsProvider);
+
+      final packs = await ref.read(packRepositoryProvider).list();
+      if (!mounted) return;
+      // A pack is all-static or all-animated; only a same-type (or still-empty)
+      // pack can take this sticker — and never one that already contains it
+      // (withSticker would silently no-op, mirroring pack detail's picker).
+      final compatible = packs
+          .where(
+            (p) =>
+                !p.stickers.any((s) => s.projectId == project.id) &&
+                (p.isEmpty || p.animated == project.isAnimated),
+          )
+          .toList();
+
+      final choice = await _showWhatsAppPackSheet(compatible);
+      if (choice == null || !mounted) return;
+
+      final StickerPack base;
+      if (choice == _newPackChoice) {
+        final name = await promptPackName(context);
+        if (name == null || !mounted) return;
+        base = StickerPack(
+          id: 'pack_${DateTime.now().microsecondsSinceEpoch}',
+          name: name,
+          animated: project.isAnimated,
+        );
+      } else {
+        base = choice as StickerPack;
+      }
+
+      // withSticker is a no-op if this project is already in the pack.
+      var next = base.withSticker(
+        PackSticker(
+          id: 'ps_${DateTime.now().microsecondsSinceEpoch}',
+          projectId: project.id,
+        ),
+      );
+      // An empty pack inherits its static/animated type from its first sticker.
+      if (base.isEmpty) next = next.copyWith(animated: project.isAnimated);
+      await ref.read(packRepositoryProvider).save(next);
+      if (!mounted) return;
+      ref.invalidate(savedPacksProvider);
+
+      // Land in the pack: the compliance banner shows how many more stickers
+      // WhatsApp needs, and "Add to WhatsApp" installs the finished pack.
+      unawaited(
+        context.pushNamed(Routes.packDetail, pathParameters: {'id': next.id}),
+      );
+    } catch (_) {
+      if (mounted) showSmToast(context, "Couldn't open the pack — try again");
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  /// Lets the user start a new WhatsApp pack from this sticker, or drop it into
+  /// a compatible existing one. Returns [_newPackChoice], the chosen
+  /// [StickerPack], or null when dismissed.
+  Future<Object?> _showWhatsAppPackSheet(List<StickerPack> compatible) {
+    return showModalBottomSheet<Object>(
+      context: context,
+      backgroundColor: AppColors.card,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const Text(
+                'Add to a WhatsApp pack',
+                style: TextStyle(
+                  fontFamily: AppFonts.display,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                  color: AppColors.green,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'WhatsApp only shows stickers that belong to a pack of at '
+                'least 3. Create a pack or add this sticker to one, then send '
+                'the whole pack to WhatsApp.',
+                style: TextStyle(
+                  fontFamily: AppFonts.ui,
+                  fontSize: 13,
+                  height: 1.5,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 18),
+              GradientButton(
+                label: 'New pack with this sticker',
+                icon: Icons.add,
+                glowColor: AppColors.green,
+                onPressed: () => Navigator.of(ctx).pop(_newPackChoice),
+              ),
+              if (compatible.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                const Text(
+                  'OR ADD TO',
+                  style: TextStyle(
+                    fontFamily: AppFonts.ui,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                for (final p in compatible) ...[
+                  _packChoiceRow(ctx, p),
+                  const SizedBox(height: 9),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _packChoiceRow(BuildContext ctx, StickerPack pack) {
+    return GestureDetector(
+      onTap: () => Navigator.of(ctx).pop(pack),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.cardAlt,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.borderFaint),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.green.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(
+                pack.animated
+                    ? Icons.gif_box_outlined
+                    : Icons.grid_view_rounded,
+                size: 19,
+                color: AppColors.green,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    pack.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: AppFonts.ui,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${pack.count} / 30 · ${pack.animated ? 'Animated' : 'Static'}',
+                    style: const TextStyle(
+                      fontFamily: AppFonts.ui,
+                      fontSize: 11.5,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.add_circle_outline,
+              size: 20,
+              color: AppColors.green,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Shown BEFORE handing the .webm to Telegram, so the user knows the steps
@@ -327,8 +562,12 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                 children: [
                   _preview(project),
                   const SizedBox(height: 18),
-                  if (project.isAnimated) _modeToggle(),
-                  if (project.isAnimated) const SizedBox(height: 20),
+                  // No Static/Animated choice for WhatsApp — the pack flow
+                  // types the sticker by the project (see _useAnimatedSticker).
+                  if (project.isAnimated && _target != 'whatsapp') ...[
+                    _modeToggle(),
+                    const SizedBox(height: 20),
+                  ],
                   const Text(
                     'SEND TO',
                     style: TextStyle(
@@ -386,8 +625,14 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                   GradientButton(
                     label: _exporting
                         ? 'Working…'
+                        : _target == 'whatsapp'
+                        ? 'Add to WhatsApp'
                         : 'Share ${_useGif(project) || _useAnimatedSticker(project) ? 'animation' : 'sticker'}',
-                    icon: _exporting ? null : Icons.ios_share,
+                    icon: _exporting
+                        ? null
+                        : _target == 'whatsapp'
+                        ? Icons.add_circle_outline
+                        : Icons.ios_share,
                     busy: _exporting,
                     onPressed: _export,
                     padding: const EdgeInsets.all(16),
