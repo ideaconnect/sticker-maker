@@ -120,18 +120,28 @@ abstract final class StickerEncoder {
   /// so pixels below [alphaThreshold] become transparent and the rest are
   /// quantized to the remaining ≤255 colours.
   ///
+  /// [alphaThreshold] is deliberately LOW (not 128): AI cut-out masks are
+  /// feathered, so a mid threshold punches speckled holes through wispy fur /
+  /// soft edges. Straight-alpha pixels carry their true colour, so rendering
+  /// mostly-transparent pixels opaque looks far better than perforating the
+  /// subject — only near-fully-transparent pixels stay holes.
+  ///
   /// Without this, `package:image`'s default GIF quantizer produces an opaque
   /// RGB palette (no alpha-0 entry), so the encoder never flags transparency and
   /// every transparent pixel flattens to black. Passing an already-palettized
   /// frame also skips the encoder's re-quantization, keeping our alpha-0 index.
   static img.Image _toTransparentPaletteFrame(
     img.Image rgba, {
-    int alphaThreshold = 128,
+    int alphaThreshold = 40,
   }) {
     // Quantize colours to ≤255 entries — index 0 is reserved for transparency.
-    final quantizer = img.OctreeQuantizer(rgba, numberOfColors: 255);
+    // NeuralQuantizer builds notably better palettes for photographic content
+    // than octree (smoother gradients, less posterization). Its palette is
+    // ALWAYS 256 entries regardless of numberOfColors, so cap what we copy at
+    // 255 and clamp mapped indices — a 257-entry table corrupts the GIF.
+    final quantizer = img.NeuralQuantizer(rgba, numberOfColors: 255);
     final src = quantizer.palette;
-    final colors = src.numColors;
+    final colors = src.numColors > 255 ? 255 : src.numColors;
 
     final palette = img.PaletteUint8(colors + 1, 4)..setRgba(0, 0, 0, 0, 0);
     for (var i = 0; i < colors; i++) {
@@ -152,10 +162,17 @@ abstract final class StickerEncoder {
     )..frameDuration = rgba.frameDuration;
 
     for (final p in rgba) {
-      final index = p.a < alphaThreshold
-          ? 0
-          : quantizer.getColorIndexRgb(p.r.toInt(), p.g.toInt(), p.b.toInt()) +
-                1;
+      int index;
+      if (p.a < alphaThreshold) {
+        index = 0;
+      } else {
+        final raw = quantizer.getColorIndexRgb(
+          p.r.toInt(),
+          p.g.toInt(),
+          p.b.toInt(),
+        );
+        index = (raw >= colors ? colors - 1 : raw) + 1;
+      }
       out.setPixelIndex(p.x, p.y, index);
     }
     return out;

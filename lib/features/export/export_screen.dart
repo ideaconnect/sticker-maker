@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../app/router.dart';
 import '../../core/models/sticker_project.dart';
+import '../../core/platform/platform_services.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/checkerboard.dart';
@@ -15,6 +16,7 @@ import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/sm_toast.dart';
 import '../editor/state/editor_controller.dart';
 import '../editor/widgets/sticker_canvas.dart';
+import '../packs/telegram_links.dart';
 import 'animated_export_service.dart';
 import 'animation_encoder.dart';
 import 'sticker_encoder.dart';
@@ -165,11 +167,120 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
       if (mounted) {
         showSmToast(context, 'Shared · ${_formatBytes(sticker.byteLength)}');
       }
+      // A .webm shared into a chat is just a video — becoming a STICKER
+      // requires Telegram's @Stickers bot. Guide the user there.
+      if (sticker.format == 'webm' && mounted) {
+        await _showTelegramStickerGuide();
+      }
     } catch (_) {
       if (mounted) showSmToast(context, "Couldn't export — try again");
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  /// Encodes the current selection and saves it straight into Downloads.
+  Future<void> _download() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final project = ref.read(editorControllerProvider).project;
+      final sticker = await _encode(project);
+      final name =
+          '${_sanitize(project.name)}_${DateTime.now().millisecondsSinceEpoch}'
+          '.${sticker.format}';
+      final mime = sticker.format == 'webm'
+          ? 'video/webm'
+          : 'image/${sticker.format}';
+      final location = await ref
+          .read(platformServicesProvider)
+          .saveToDownloads(name, mime, sticker.bytes);
+      if (mounted) {
+        showSmToast(
+          context,
+          location == null ? "Couldn't save the file" : 'Saved to $location',
+        );
+      }
+    } catch (_) {
+      if (mounted) showSmToast(context, "Couldn't export — try again");
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  /// Post-share guidance: turning the exported .webm into an actual Telegram
+  /// sticker goes through @Stickers (`/newvideo`) — Telegram has no API to
+  /// create packs directly from an app.
+  Future<void> _showTelegramStickerGuide() {
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const Text(
+                'Make it a Telegram sticker',
+                style: TextStyle(
+                  fontFamily: AppFonts.display,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                  color: AppColors.cyan,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Sent to a chat, the .webm plays as a video on a black '
+                'background. To get a real transparent sticker:\n'
+                '1. Open the @Stickers bot\n'
+                '2. Send /newvideo and a pack title\n'
+                '3. Send the exported .webm as a FILE\n'
+                '4. Pick an emoji, then /publish',
+                style: TextStyle(
+                  fontFamily: AppFonts.ui,
+                  fontSize: 13,
+                  height: 1.55,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              GradientButton(
+                label: 'Open @Stickers',
+                icon: Icons.open_in_new,
+                onPressed: () async {
+                  final opened = await ref
+                      .read(platformServicesProvider)
+                      .openUri(TelegramLinks.newPackCommand(animated: true));
+                  if (ctx.mounted) {
+                    Navigator.of(ctx).pop();
+                    if (!opened && mounted) {
+                      showSmToast(context, 'Telegram is not installed');
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   static String _sanitize(String name) {
@@ -255,12 +366,21 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                   const SizedBox(height: 16),
                   GradientButton(
                     label: _exporting
-                        ? 'Sharing…'
+                        ? 'Working…'
                         : 'Share ${_useGif(project) || _useAnimatedSticker(project) ? 'animation' : 'sticker'}',
                     icon: _exporting ? null : Icons.ios_share,
                     busy: _exporting,
                     onPressed: _export,
                     padding: const EdgeInsets.all(16),
+                  ),
+                  const SizedBox(height: 10),
+                  GradientButton(
+                    label: 'Download',
+                    icon: Icons.download_outlined,
+                    solidColor: AppColors.neutralButton,
+                    foreground: AppColors.textSecondary,
+                    onPressed: _exporting ? null : _download,
+                    padding: const EdgeInsets.all(15),
                   ),
                 ],
               ),

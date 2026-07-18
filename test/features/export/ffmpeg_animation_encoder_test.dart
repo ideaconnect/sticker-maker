@@ -199,14 +199,28 @@ void main() {
     );
 
     test('ladder presets are ordered best-first', () {
-      expect(
-        telegramBitrateLadder.first,
-        greaterThan(telegramBitrateLadder.last),
-      );
+      final tg = telegramBitrateLadderFor(1);
+      expect(tg.first, greaterThan(tg.last));
       expect(
         whatsappQualityLadder.first,
         greaterThan(whatsappQualityLadder.last),
       );
+    });
+
+    test('telegram bitrate ladder spends the budget by duration', () {
+      // 1 s clip: ~90% of 256 KB as bits/s ≈ 1886 kbps.
+      expect(telegramBitrateLadderFor(1).first, closeTo(1886, 5));
+      // 3 s clip: a third of that.
+      expect(telegramBitrateLadderFor(3).first, closeTo(629, 5));
+      // Very short clips clamp at 4000 kbps; very long at the 200 floor.
+      expect(telegramBitrateLadderFor(0.2).first, 4000);
+      expect(telegramBitrateLadderFor(10).first, greaterThanOrEqualTo(188));
+      // Every rung stays positive and descending.
+      final ladder = telegramBitrateLadderFor(2);
+      for (var i = 1; i < ladder.length; i++) {
+        expect(ladder[i], lessThan(ladder[i - 1]));
+        expect(ladder[i], greaterThan(0));
+      }
     });
   });
 }

@@ -73,7 +73,8 @@ class AnimatedExportService {
       frames,
       spec,
       qualities: spec.format == 'webm'
-          ? telegramBitrateLadder
+          // Duration-aware bitrate: spend the whole 256 KB budget on quality.
+          ? telegramBitrateLadderFor(plan.totalSeconds, maxBytes: spec.maxBytes)
           : whatsappQualityLadder,
     );
     if (!result.withinBudget) {

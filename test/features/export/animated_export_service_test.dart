@@ -49,8 +49,11 @@ void main() {
       expect(sticker.format, 'webm');
       expect(webm.lastFrameCount, 4, reason: 'all frames within caps');
       expect(webp.lastFrameCount, isNull, reason: 'webp encoder untouched');
-      // Fake bytes = frames*quality; the first ladder rung already fits 256 KB.
-      expect(sticker.byteLength, 4 * telegramBitrateLadder.first);
+      // Duration-aware bitrate: 4 frames at 12 fps ≈ 0.33 s, so the target
+      // bitrate hits the 4000 kbps clamp; the fake's bytes (frames×quality)
+      // fit the 256 KB cap on the first rung.
+      expect(webm.lastQuality, 4000);
+      expect(sticker.byteLength, 4 * 4000);
     },
   );
 

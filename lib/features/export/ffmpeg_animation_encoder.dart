@@ -151,8 +151,12 @@ class FfmpegWebmVp9Encoder extends _FfmpegAnimationEncoder {
 
   @override
   String codecArgs({required int quality, required bool loop}) =>
+      // Constrained quality: cap the bitrate at the budget-derived target while
+      // -crf keeps quality consistent. -auto-alt-ref 0 is required for alpha
+      // (alt-ref frames corrupt the side alpha stream); row-mt speeds encoding.
       // Looping is a player-side behavior for stickers; no container flag.
-      '-c:v libvpx-vp9 -pix_fmt yuva420p -b:v ${quality}K -an';
+      '-c:v libvpx-vp9 -pix_fmt yuva420p -b:v ${quality}K -crf 18 '
+      '-deadline good -cpu-used 1 -row-mt 1 -auto-alt-ref 0 -an';
 }
 
 /// Animated WebP for WhatsApp animated stickers (#68 / ANIM-3).

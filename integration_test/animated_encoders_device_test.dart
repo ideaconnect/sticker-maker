@@ -68,7 +68,7 @@ void main() {
         encoder,
         frames,
         AnimationSpec.telegramWebm,
-        qualities: telegramBitrateLadder,
+        qualities: telegramBitrateLadderFor(1),
       );
 
       // ignore: avoid_print

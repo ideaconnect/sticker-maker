@@ -159,7 +159,27 @@ Future<BudgetedEncode> encodeWithinBudget(
 
 /// Quality ladders per target (best first). Telegram's knob is VP9 bitrate in
 /// kbps; WhatsApp's is libwebp 0–100 quality.
-const telegramBitrateLadder = <int>[400, 320, 256, 192, 144, 96, 64];
+///
+/// The Telegram ladder is **duration-aware**: a fixed low bitrate wastes the
+/// 256 KB budget on short clips (a 1 s clip can afford ~1800 kbps) and produces
+/// blocky chroma garbage around cut-out edges. [telegramBitrateLadderFor]
+/// derives the top rung from the actual clip length and descends from there.
+List<int> telegramBitrateLadderFor(
+  double durationSeconds, {
+  int maxBytes = 256 * 1024,
+}) {
+  final seconds = durationSeconds.clamp(0.1, 10.0);
+  // 90% of the byte budget as bits/s, clamped to sane VP9 territory.
+  final target = (maxBytes * 8 * 0.90 / 1000 / seconds).round().clamp(
+    200,
+    4000,
+  );
+  return [
+    for (final f in const [1.0, 0.75, 0.55, 0.4, 0.28, 0.18, 0.1])
+      (target * f).round().clamp(64, 4000),
+  ];
+}
+
 const whatsappQualityLadder = <int>[80, 70, 60, 50, 40, 30];
 
 /// Test double: records the last call and returns canned bytes whose length is
