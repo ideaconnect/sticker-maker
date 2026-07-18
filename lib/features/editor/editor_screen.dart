@@ -56,6 +56,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   bool _isPlaying = false; // frame playback (M4)
   double _fps = 8; // (M4)
   Timer? _playTimer;
+  bool _onionSkin = false; // ghost the previous frame (M4 #37)
   bool _eraseMode = true; // erase vs restore (M2)
   bool _softEdges = true;
   double _brushSize = 40;
@@ -211,11 +212,13 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                       onEmptyTap: () => _pickPhoto(ImageSource.gallery),
                       dropPlaceholder: const DropPlaceholder(),
                       onEraseStroke: _applyEraseStroke,
+                      onionFrame: _onionFrame(editor),
                     ),
                     if (_hasCutout(editor)) const _CutBadge(),
                     if (_removingBg) const _RemovingOverlay(),
-                    if (editor.tool == EditorTool.frames &&
-                        editor.project.frameCount > 1)
+                    // Which frame you're editing — shown in every tool while the
+                    // project is animated (per-frame editing indicator, #36).
+                    if (editor.project.frameCount > 1)
                       _FrameCounter(
                         current: editor.project.safeFrameIndex + 1,
                         total: editor.project.frameCount,
@@ -232,6 +235,21 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
 
   bool _hasCutout(EditorState editor) =>
       editor.layers.any((l) => l is ImageLayer && l.maskPath != null);
+
+  /// The previous frame to ghost behind the current one (onion skin), or null
+  /// when disabled / not applicable. Suppressed during playback.
+  Frame? _onionFrame(EditorState editor) {
+    if (!_onionSkin ||
+        _isPlaying ||
+        editor.tool != EditorTool.frames ||
+        editor.project.frameCount < 2) {
+      return null;
+    }
+    final frames = editor.project.frames;
+    final prev =
+        (editor.project.safeFrameIndex - 1 + frames.length) % frames.length;
+    return frames[prev];
+  }
 
   // ---------------------------------------------------------------- panel
   Widget _panel(EditorState editor, double maxHeight) {
@@ -970,6 +988,56 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             if (_isPlaying) _restartPlayTimer();
           },
         ),
+        if (frames.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Expanded(
+                  child: Text(
+                    'New layers to all frames',
+                    style: TextStyle(
+                      fontFamily: AppFonts.ui,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                Switch(
+                  value: _controller.addToAllFrames,
+                  activeThumbColor: Colors.white,
+                  activeTrackColor: AppColors.orange,
+                  onChanged: (v) =>
+                      setState(() => _controller.addToAllFrames = v),
+                ),
+              ],
+            ),
+          ),
+        if (frames.length > 1)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Expanded(
+                child: Text(
+                  'Onion skin (ghost previous)',
+                  style: TextStyle(
+                    fontFamily: AppFonts.ui,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              Switch(
+                value: _onionSkin,
+                activeThumbColor: Colors.white,
+                activeTrackColor: AppColors.orange,
+                onChanged: (v) => setState(() => _onionSkin = v),
+              ),
+            ],
+          ),
       ],
     );
   }

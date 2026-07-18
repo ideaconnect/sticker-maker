@@ -148,29 +148,59 @@ class EditorController extends Notifier<EditorState> {
     _commit(state.project.copyWith(frames: frames), coalesce: coalesce);
   }
 
-  TextLayer addTextLayer({
-    String text = 'Text',
-    String fontFamily = 'Bangers',
-    double fontSize = 40,
-  }) {
-    final layer = TextLayer(
-      id: _newId('l'),
-      name: text,
-      text: text,
-      fontFamily: fontFamily,
-      fontSize: fontSize,
-    );
+  /// When true, layers added via the Add menu are inserted onto **every** frame
+  /// (a fresh id per frame) — the basis for animating one caption across frames.
+  /// Toggled from the Frames panel; only takes effect on animated projects.
+  bool addToAllFrames = false;
+
+  /// Adds a layer to the current frame, or — when [addToAllFrames] is on and the
+  /// project is animated — a fresh-id copy to every frame, selecting the copy on
+  /// the current frame. [make] is called once per target frame.
+  T _addLayer<T extends Layer>(T Function() make) {
+    if (addToAllFrames && state.project.frameCount > 1) {
+      final project = state.project;
+      final currentIdx = project.safeFrameIndex;
+      late T selected;
+      final frames = <Frame>[];
+      for (var i = 0; i < project.frames.length; i++) {
+        final layer = make();
+        if (i == currentIdx) selected = layer;
+        frames.add(
+          project.frames[i].copyWith(
+            layers: [...project.frames[i].layers, layer],
+          ),
+        );
+      }
+      _commit(project.copyWith(frames: frames));
+      selectLayer(selected.id);
+      return selected;
+    }
+    final layer = make();
     _mutateLayers((layers) => [...layers, layer]);
     selectLayer(layer.id);
     return layer;
   }
 
-  ImageLayer addImageLayer({required String assetPath, String name = 'Photo'}) {
-    final layer = ImageLayer(id: _newId('l'), name: name, assetPath: assetPath);
-    _mutateLayers((layers) => [...layers, layer]);
-    selectLayer(layer.id);
-    return layer;
-  }
+  TextLayer addTextLayer({
+    String text = 'Text',
+    String fontFamily = 'Bangers',
+    double fontSize = 40,
+  }) => _addLayer(
+    () => TextLayer(
+      id: _newId('l'),
+      name: text,
+      text: text,
+      fontFamily: fontFamily,
+      fontSize: fontSize,
+    ),
+  );
+
+  ImageLayer addImageLayer({
+    required String assetPath,
+    String name = 'Photo',
+  }) => _addLayer(
+    () => ImageLayer(id: _newId('l'), name: name, assetPath: assetPath),
+  );
 
   void removeLayer(String id) {
     _mutateLayers((layers) => layers.where((l) => l.id != id).toList());
@@ -239,18 +269,15 @@ class EditorController extends Notifier<EditorState> {
   BubbleLayer addBubbleLayer({
     String text = 'Woof!',
     BubbleShape shape = BubbleShape.speech,
-  }) {
-    final layer = BubbleLayer(
+  }) => _addLayer(
+    () => BubbleLayer(
       id: _newId('l'),
       name: text.isEmpty ? 'Bubble' : text,
       text: text,
       shape: shape,
       transform: const LayerTransform(position: Offset(256, 220)),
-    );
-    _mutateLayers((layers) => [...layers, layer]);
-    selectLayer(layer.id);
-    return layer;
-  }
+    ),
+  );
 
   void updateBubbleLayer(
     String id, {

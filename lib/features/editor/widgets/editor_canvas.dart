@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/models/frame.dart';
 import '../../../core/models/layer.dart';
 import '../../../core/models/layer_transform.dart';
 import '../../../core/theme/app_colors.dart';
@@ -23,6 +24,7 @@ class EditorCanvas extends ConsumerStatefulWidget {
     required this.onEmptyTap,
     required this.dropPlaceholder,
     this.onEraseStroke,
+    this.onionFrame,
   });
 
   /// Tapped when the canvas has no layers (kick off image import).
@@ -30,6 +32,9 @@ class EditorCanvas extends ConsumerStatefulWidget {
 
   /// Placeholder shown on an empty canvas.
   final Widget dropPlaceholder;
+
+  /// When set, this frame is drawn ghosted behind the current one (onion skin).
+  final Frame? onionFrame;
 
   /// Called with a brush stroke (points in 512-logical canvas units) when the
   /// Erase tool is active over the selected image layer.
@@ -74,6 +79,11 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
             fit: StackFit.expand,
             children: [
               const Checkerboard(),
+              if (widget.onionFrame != null)
+                Opacity(
+                  opacity: 0.25,
+                  child: StickerCanvas(frame: widget.onionFrame!),
+                ),
               if (editor.layers.isEmpty)
                 Center(child: widget.dropPlaceholder)
               else

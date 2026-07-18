@@ -91,6 +91,32 @@ void main() {
       ctrl.undo();
       expect(c.read(editorControllerProvider).project.frameCount, 3);
     });
+
+    test('a new layer lands only on the current frame by default', () {
+      final c = _container(_threeFrames);
+      _controllerFor(c)
+        ..selectFrame(1)
+        ..addTextLayer(text: 'only');
+
+      final p = c.read(editorControllerProvider).project;
+      expect(p.frames[0].layers, isEmpty);
+      expect(p.frames[1].layers.map((l) => (l as TextLayer).text), ['only']);
+      expect(p.frames[2].layers, isEmpty);
+    });
+
+    test('addToAllFrames adds a fresh-id copy to every frame', () {
+      final c = _container(_threeFrames);
+      _controllerFor(c)
+        ..addToAllFrames = true
+        ..addTextLayer(text: 'wiggle');
+
+      final p = c.read(editorControllerProvider).project;
+      for (final f in p.frames) {
+        expect(f.layers.map((l) => (l as TextLayer).text), ['wiggle']);
+      }
+      final ids = p.frames.map((f) => f.layers.first.id).toSet();
+      expect(ids.length, 3, reason: 'unique layer id per frame');
+    });
   });
 
   group('playback', () {
@@ -138,6 +164,9 @@ void main() {
       await tester.tap(find.text('Frames'));
       await tester.pumpAndSettle();
       expect(find.text('Frame 1 / 3'), findsOneWidget);
+      // Animated-project affordances (#36 apply-to-all, #37 onion skin).
+      expect(find.text('New layers to all frames'), findsOneWidget);
+      expect(find.text('Onion skin (ghost previous)'), findsOneWidget);
 
       await tester.tap(find.text('Play'));
       await tester.pump(); // start the timer
