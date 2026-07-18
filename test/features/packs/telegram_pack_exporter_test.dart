@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:sticker_maker/core/models/frame.dart';
 import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
+import 'package:sticker_maker/features/export/animated_export_service.dart';
+import 'package:sticker_maker/features/export/animation_encoder.dart';
 import 'package:sticker_maker/features/packs/sticker_pack.dart';
 import 'package:sticker_maker/features/packs/telegram_pack_exporter.dart';
 
@@ -75,6 +78,18 @@ void main() {
     );
     final export = await TelegramPackExporter(
       baseDir: tmp,
+      // Animated packs render through the animated service — fake it here
+      // (the real one needs the FFmpeg plugin, absent on the host).
+      animated: AnimatedExportService(
+        webmEncoder: FakeAnimationEncoder(id: 'webm', format: 'webm'),
+        webpEncoder: FakeAnimationEncoder(id: 'webp'),
+        rasterizer: (frame, durationMs) async => RgbaFrame(
+          bytes: Uint8List(16),
+          width: 2,
+          height: 2,
+          durationMs: durationMs,
+        ),
+      ),
     ).export(pack, {'p': _proj('p')});
     expect(export.animated, isTrue);
     expect(export.startCommand.queryParameters['text'], '/newvideo');
@@ -87,5 +102,49 @@ void main() {
       ).export(const StickerPack(id: 'e', name: 'E'), const {}),
       throwsStateError,
     );
+  });
+
+  test('an animated pack renders .webm video stickers', () async {
+    const pack = StickerPack(
+      id: 'vid2',
+      name: 'Vid Two',
+      animated: true,
+      stickers: [
+        PackSticker(id: 's', projectId: 'p', emojis: ['🎬']),
+      ],
+    );
+    final project = StickerProject(
+      id: 'p',
+      name: 'p',
+      frames: [
+        for (var i = 0; i < 2; i++)
+          Frame(
+            id: 'f$i',
+            layers: [
+              TextLayer(id: 't$i', name: 'S', text: 'S$i', fontFamily: 'Rubik'),
+            ],
+          ),
+      ],
+    );
+    final service = AnimatedExportService(
+      webmEncoder: FakeAnimationEncoder(id: 'webm', format: 'webm'),
+      webpEncoder: FakeAnimationEncoder(id: 'webp'),
+      rasterizer: (frame, durationMs) async => RgbaFrame(
+        bytes: Uint8List(16),
+        width: 2,
+        height: 2,
+        durationMs: durationMs,
+      ),
+    );
+
+    final export = await TelegramPackExporter(
+      baseDir: tmp,
+      animated: service,
+    ).export(pack, {'p': project});
+
+    expect(export.files.single.path, endsWith('0.webm'));
+    expect(export.files.single.lengthSync(), greaterThan(0));
+    expect(export.animated, isTrue);
+    expect(export.startCommand.queryParameters['text'], '/newvideo');
   });
 }

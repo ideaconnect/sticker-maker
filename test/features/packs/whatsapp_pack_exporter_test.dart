@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:sticker_maker/core/models/frame.dart';
 import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
+import 'package:sticker_maker/features/export/animated_export_service.dart';
+import 'package:sticker_maker/features/export/animation_encoder.dart';
 import 'package:sticker_maker/features/packs/sticker_pack.dart';
 import 'package:sticker_maker/features/packs/whatsapp_pack_exporter.dart';
 
@@ -19,6 +22,38 @@ StickerProject _proj(String id) => StickerProject(
       ],
     ),
   ],
+);
+
+StickerProject _animProj(String id) => StickerProject(
+  id: id,
+  name: id,
+  frames: [
+    for (var i = 0; i < 2; i++)
+      Frame(
+        id: '${id}_f$i',
+        layers: [
+          TextLayer(
+            id: '${id}_t$i',
+            name: 'W',
+            text: 'W$i',
+            fontFamily: 'Rubik',
+          ),
+        ],
+      ),
+  ],
+);
+
+/// A pure animated-export service: fake encoders + a fake rasterizer, so the
+/// FFmpeg plugin and dart:ui are never touched on the host.
+AnimatedExportService _fakeAnimatedService() => AnimatedExportService(
+  webmEncoder: FakeAnimationEncoder(id: 'webm', format: 'webm'),
+  webpEncoder: FakeAnimationEncoder(id: 'webp'),
+  rasterizer: (frame, durationMs) async => RgbaFrame(
+    bytes: Uint8List(16),
+    width: 2,
+    height: 2,
+    durationMs: durationMs,
+  ),
 );
 
 void main() {
@@ -111,4 +146,36 @@ void main() {
       throwsStateError,
     );
   });
+
+  test(
+    'an animated pack encodes every sticker through the animated path',
+    () async {
+      const pack = StickerPack(
+        id: 'anim1',
+        name: 'Movers',
+        animated: true,
+        stickers: [
+          PackSticker(id: 's0', projectId: 'a0', emojis: ['🎬']),
+          PackSticker(id: 's1', projectId: 'a1', emojis: ['✨']),
+        ],
+      );
+      final projects = {'a0': _animProj('a0'), 'a1': _animProj('a1')};
+
+      final export = await WhatsAppPackExporter(
+        baseDir: tmp,
+        animated: _fakeAnimatedService(),
+      ).export(pack, projects);
+
+      // Both stickers written via the animated encoder (fake bytes, non-empty).
+      for (var i = 0; i < 2; i++) {
+        final f = File('${export.directory.path}/$i.webp');
+        expect(f.existsSync(), isTrue);
+        expect(f.lengthSync(), greaterThan(0));
+      }
+      final packJson =
+          (export.contents['sticker_packs'] as List).first
+              as Map<String, dynamic>;
+      expect(packJson['animated_sticker_pack'], isTrue);
+    },
+  );
 }

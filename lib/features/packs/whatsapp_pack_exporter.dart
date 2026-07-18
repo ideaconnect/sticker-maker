@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../core/models/sticker_project.dart';
+import '../export/animated_export_service.dart';
+import '../export/animation_encoder.dart';
 import '../export/sticker_encoder.dart';
 import '../export/sticker_renderer.dart';
 import 'sticker_pack.dart';
@@ -26,9 +28,18 @@ class WhatsAppPackExport {
 /// rendering (no platform channels), so it's fully unit-testable; the native
 /// hand-off to WhatsApp lives in the ContentProvider (#46).
 class WhatsAppPackExporter {
-  WhatsAppPackExporter({Directory? baseDir}) : _baseOverride = baseDir;
+  WhatsAppPackExporter({Directory? baseDir, AnimatedExportService? animated})
+    : _baseOverride = baseDir,
+      _animatedOverride = animated;
 
   final Directory? _baseOverride;
+  final AnimatedExportService? _animatedOverride;
+  AnimatedExportService? _animatedLazy;
+
+  /// Constructed on first animated use so static-only paths never touch the
+  /// FFmpeg plugin (keeps host tests plugin-free).
+  AnimatedExportService get _animated =>
+      _animatedOverride ?? (_animatedLazy ??= AnimatedExportService());
 
   /// WhatsApp sticker edge (px).
   static const int stickerEdge = 512;
@@ -57,10 +68,12 @@ class WhatsAppPackExporter {
       if (project == null) continue;
       firstProject ??= project;
       // WhatsApp requires stickers to be *exactly* [stickerEdge]×[stickerEdge]
-      // (the encoder default), never budget-downscaled. Lossless WebP of a
-      // simple sticker is well under the 100 KB cap; a heavy photo cut-out may
-      // exceed it — that needs lossy/animated WebP (native #42b).
-      final webp = await StickerEncoder.webp(project.currentFrame);
+      // (the encoder default), never budget-downscaled. Animated packs encode
+      // every sticker as an animated WebP within the 500 KB cap (#70); static
+      // packs use lossless single-frame WebP (≤100 KB for simple stickers).
+      final webp = pack.animated
+          ? await _animated.encode(project, AnimationSpec.whatsappWebp)
+          : await StickerEncoder.webp(project.currentFrame);
       final fileName = '$index.webp';
       await File('${dir.path}/$fileName').writeAsBytes(webp.bytes);
       stickerEntries.add({'image_file': fileName, 'emojis': sticker.emojis});

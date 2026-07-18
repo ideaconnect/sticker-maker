@@ -22,14 +22,21 @@ class TelegramPackShare {
   static Future<void> _defaultShare(List<String> paths, String text) =>
       SharePlus.instance.share(
         ShareParams(
-          files: [for (final p in paths) XFile(p, mimeType: 'image/webp')],
+          files: [
+            for (final p in paths)
+              XFile(
+                p,
+                // Video stickers are .webm documents; static are .webp images.
+                mimeType: p.endsWith('.webm') ? 'video/webm' : 'image/webp',
+              ),
+          ],
           text: text,
         ),
       );
 
   static const guidance =
-      'Send these to @Stickers on Telegram, then follow its prompts to tag '
-      'emojis and /publish.';
+      'Send these to @Stickers on Telegram (as files), then follow its '
+      'prompts to tag emojis and /publish.';
 
   Future<TelegramPackExport> share(
     StickerPack pack,

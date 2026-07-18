@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import '../../core/models/sticker_project.dart';
+import '../export/animated_export_service.dart';
+import '../export/animation_encoder.dart';
 import '../export/sticker_encoder.dart';
 import 'sticker_pack.dart';
 import 'telegram_links.dart';
@@ -37,13 +39,22 @@ class TelegramPackExport {
 /// Pure IO + rendering (no platform channels) so it's unit-testable; the share
 /// + deep-link hand-off is the UI layer's job.
 ///
-/// Static stickers are 512² WebP (Telegram accepts WebP/PNG). Animated (video)
-/// packs need WebM VP9 — the native encoder (#42b) — so those are not rendered
-/// here yet; [TelegramPackExport.animated] flags the intent.
+/// Static stickers are 512² WebP (Telegram accepts WebP/PNG). Animated packs
+/// render **WebM VP9 + alpha video stickers** (#70 / ADR 0004) — the format
+/// @Stickers' `/newvideo` flow requires.
 class TelegramPackExporter {
-  TelegramPackExporter({Directory? baseDir}) : _baseOverride = baseDir;
+  TelegramPackExporter({Directory? baseDir, AnimatedExportService? animated})
+    : _baseOverride = baseDir,
+      _animatedOverride = animated;
 
   final Directory? _baseOverride;
+  final AnimatedExportService? _animatedOverride;
+  AnimatedExportService? _animatedLazy;
+
+  /// Constructed on first animated use so static-only paths never touch the
+  /// FFmpeg plugin (keeps host tests plugin-free).
+  AnimatedExportService get _animated =>
+      _animatedOverride ?? (_animatedLazy ??= AnimatedExportService());
 
   /// Telegram sticker edge (px).
   static const int stickerEdge = 512;
@@ -63,9 +74,11 @@ class TelegramPackExporter {
     for (final sticker in pack.stickers) {
       final project = projects[sticker.projectId];
       if (project == null) continue;
-      final webp = await StickerEncoder.webp(project.currentFrame);
-      final file = File('${dir.path}/$index.webp')
-        ..writeAsBytesSync(webp.bytes);
+      final encoded = pack.animated
+          ? await _animated.encode(project, AnimationSpec.telegramWebm)
+          : await StickerEncoder.webp(project.currentFrame);
+      final file = File('${dir.path}/$index.${encoded.format}')
+        ..writeAsBytesSync(encoded.bytes);
       files.add(file);
       emojis.add(sticker.emojis);
       index++;
