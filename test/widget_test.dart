@@ -111,8 +111,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('All stickers'), findsOneWidget);
-    // No saved projects in this test → empty state.
-    expect(find.text('No stickers yet'), findsOneWidget);
+    // 'No stickers yet' also renders on Home (still mounted under this route);
+    // assert on the search hint, which is unique to the all-stickers screen.
+    expect(find.text('Search your stickers'), findsOneWidget);
   });
 
   testWidgets('Home "Sticker packs" opens the packs manager', (tester) async {

@@ -9,6 +9,7 @@
 // The "Playwright-like" part: each test launches the app, taps through a user
 // journey, and asserts on what's actually on screen.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -18,12 +19,21 @@ import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sticker_maker/app/app.dart';
 
-/// Wipes the on-device projects directory so each test starts from a known
-/// empty state (no leftover stickers from a previous run or test).
-Future<void> _resetProjects() async {
+/// Wipes an on-device data directory (`projects`, `packs`, …) under app docs so
+/// each test starts from a known empty state.
+Future<void> _wipeDir(String name) async {
   final base = await getApplicationDocumentsDirectory();
-  final dir = Directory('${base.path}/projects');
+  final dir = Directory('${base.path}/$name');
   if (dir.existsSync()) dir.deleteSync(recursive: true);
+}
+
+/// Seeds the first-run flag (#55). Journey tests want to start past onboarding,
+/// on Home; the onboarding test flips this to false to see the intro.
+Future<void> _setOnboardingSeen(bool seen) async {
+  final base = await getApplicationDocumentsDirectory();
+  await File(
+    '${base.path}/settings.json',
+  ).writeAsString(jsonEncode({'onboardingSeen': seen}));
 }
 
 /// Launches the full app exactly as `main()` does (real providers, real
@@ -42,7 +52,13 @@ Future<void> openNewSticker(WidgetTester tester) async {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(_resetProjects);
+  setUp(() async {
+    await _wipeDir('projects');
+    await _wipeDir('packs');
+    await _setOnboardingSeen(
+      true,
+    ); // journey tests start on Home, not the intro
+  });
 
   testWidgets('app boots to Home with brand, hero action and empty state', (
     tester,
@@ -219,5 +235,82 @@ void main() {
     await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
     expect(find.textContaining('/ 2'), findsWidgets);
+  });
+
+  testWidgets('first run shows onboarding; Skip lands on Home (#55)', (
+    tester,
+  ) async {
+    await _setOnboardingSeen(false); // undo setUp's seed for this test
+    await launchApp(tester);
+
+    expect(find.text('Make it yours'), findsOneWidget);
+    await tester.tap(find.text('Skip'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('New Sticker'), findsOneWidget);
+  });
+
+  testWidgets('Home opens the pack manager and creates a pack (#45)', (
+    tester,
+  ) async {
+    await launchApp(tester);
+    await tester.tap(find.text('Sticker packs'));
+    await tester.pumpAndSettle();
+    expect(find.text('No packs yet'), findsOneWidget);
+
+    await tester.tap(find.text('New pack'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'My Pack');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+
+    // Landed in the pack detail editor.
+    expect(find.text('My Pack'), findsWidgets);
+    expect(find.text('Add stickers'), findsOneWidget);
+  });
+
+  testWidgets('Home "See all" opens the searchable list (#63)', (tester) async {
+    await launchApp(tester);
+    await tester.tap(find.text('See all'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('All stickers'), findsOneWidget);
+    // 'No stickers yet' also shows on Home (still mounted under this route), so
+    // assert on the search hint, which is unique to this screen.
+    expect(find.text('Search your stickers'), findsOneWidget);
+  });
+
+  testWidgets('an emoji can be dropped onto the canvas (#61)', (tester) async {
+    await launchApp(tester);
+    await openNewSticker(tester);
+
+    await tester.tap(find.text('Layers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add emoji'));
+    await tester.pumpAndSettle();
+    expect(find.text('Add a sticker'), findsOneWidget); // the emoji picker
+
+    await tester.tap(find.text('😀'));
+    await tester.pumpAndSettle();
+
+    // Dropped as a layer and rendered on the canvas (real emoji font on device).
+    expect(find.text('😀'), findsWidgets);
+  });
+
+  testWidgets('About sheet reaches the open-source licenses (#53)', (
+    tester,
+  ) async {
+    await launchApp(tester);
+    await tester.tap(
+      find.byIcon(Icons.more_horiz),
+    ); // Home avatar → About sheet
+    await tester.pumpAndSettle();
+    // Tap the licenses row by its icon (label uses a non-breaking hyphen).
+    await tester.tap(find.byIcon(Icons.article_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Plus Jakarta Sans'), findsOneWidget);
   });
 }
