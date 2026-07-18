@@ -159,14 +159,20 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
         // Skip the system share sheet: hand the .webm straight to Telegram's
         // own chat picker (Saved Messages is pinned there; the @Stickers chat
         // works directly too), then guide the sticker-pack steps.
+        //
+        // Crucially the mime is a generic FILE type, not video/webm: Telegram
+        // routes video/* through its video flow (compression, video player),
+        // which @Stickers rejects — as a document it arrives exactly the way
+        // the bot requires (STICKER_VIDEO_NODOC otherwise).
+        const docMime = 'application/octet-stream';
         final sent = await ref.read(platformServicesProvider).shareToTelegram([
           file.path,
-        ], mime);
+        ], docMime);
         if (!sent) {
           // No Telegram installed — regular share sheet as fallback.
           await SharePlus.instance.share(
             ShareParams(
-              files: [XFile(file.path, mimeType: mime)],
+              files: [XFile(file.path, mimeType: docMime)],
               subject: project.name,
             ),
           );
@@ -226,10 +232,11 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
   /// whether the file already landed in Telegram's chat picker.
   Future<void> _showTelegramStickerGuide({required bool sentToTelegram}) {
     final intro = sentToTelegram
-        ? 'The file is already attached in Telegram — send it to Saved '
-              'Messages (top of the list) or straight to the @Stickers chat.'
-        : 'Sent to a chat, the .webm plays as a video on a black background — '
-              'a real transparent sticker goes through @Stickers.';
+        ? 'The sticker file is attached in Telegram as a document (what '
+              '@Stickers needs) — send it to Saved Messages (top of the list) '
+              'or straight to the @Stickers chat.'
+        : 'A real transparent sticker goes through @Stickers — send it the '
+              '.webm as a file.';
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.card,

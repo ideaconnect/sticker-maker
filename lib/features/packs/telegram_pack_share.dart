@@ -21,9 +21,10 @@ class TelegramPackShare {
   final Future<void> Function(List<String> paths, String text) _shareFiles;
 
   static Future<void> _defaultShare(List<String> paths, String text) async {
-    // Video stickers are .webm documents; static are .webp images.
+    // Video stickers must arrive as generic FILES (documents) — video/* mime
+    // routes them through Telegram's video flow, which @Stickers rejects.
     final mime = paths.any((p) => p.endsWith('.webm'))
-        ? 'video/webm'
+        ? 'application/octet-stream'
         : 'image/webp';
     // Prefer Telegram's own chat picker (Saved Messages / @Stickers one tap
     // away); fall back to the system share sheet when Telegram is absent.
