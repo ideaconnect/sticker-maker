@@ -43,6 +43,50 @@ Offset bubbleTailFromLocal(Offset local, Size size) {
   return Offset(dx.clamp(-dxMax, dxMax), dy.clamp(dyMin, 1.0));
 }
 
+/// The largest font size ≤ [maxSize] at which [text] (width-wrapped) fits
+/// inside [bounds]. Shared by the live [BubbleView] and the export renderer so
+/// what the user sees is what the sticker ships — long captions used to clip
+/// in preview but spill outside the bubble in export (#79).
+double bubbleFitFontSize({
+  required String text,
+  required String fontFamily,
+  required double maxSize,
+  required Size bounds,
+}) {
+  if (text.trim().isEmpty || bounds.isEmpty) return maxSize;
+  bool fits(double size) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontFamily: fontFamily,
+          fontSize: size,
+          height: 1.05,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: bounds.width);
+    final ok = tp.height <= bounds.height && tp.width <= bounds.width;
+    tp.dispose();
+    return ok;
+  }
+
+  if (fits(maxSize)) return maxSize;
+  var lo = 6.0;
+  var hi = maxSize;
+  for (var i = 0; i < 7; i++) {
+    final mid = (lo + hi) / 2;
+    if (fits(mid)) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo;
+}
+
 /// Renders a [BubbleLayer] as crisp vector paths (a shape body + tail) with a
 /// centered, reflowing caption. Sized in logical units × [scale]; the layer's
 /// own transform (scale/rotation) is applied by the enclosing widgets.
@@ -57,6 +101,13 @@ class BubbleView extends StatelessWidget {
     final size = kBubbleBaseSize * scale;
     // The caption sits inside the body (upper ~68% of the box), padded.
     final bodyRect = bubbleBodyRect(size);
+    final captionRect = bodyRect.deflate(10 * scale);
+    final fontSize = bubbleFitFontSize(
+      text: layer.text,
+      fontFamily: layer.fontFamily,
+      maxSize: layer.fontSize * scale,
+      bounds: captionRect.size,
+    );
     return SizedBox(
       width: size.width,
       height: size.height,
@@ -64,14 +115,14 @@ class BubbleView extends StatelessWidget {
         children: [
           Positioned.fill(child: CustomPaint(painter: BubblePainter(layer))),
           Positioned.fromRect(
-            rect: bodyRect.deflate(10 * scale),
+            rect: captionRect,
             child: Center(
               child: Text(
                 layer.text,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontFamily: layer.fontFamily,
-                  fontSize: layer.fontSize * scale,
+                  fontSize: fontSize,
                   height: 1.05,
                   color: layer.textColor,
                   fontWeight: FontWeight.w700,
@@ -110,8 +161,9 @@ class BubblePainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round
       ..color = layer.strokeColor;
 
-    // Soft drop shadow for the sticker feel.
-    canvas.drawShadow(path, const Color(0x55000000), 4, false);
+    // Soft drop shadow for the sticker feel — elevation scales with the box
+    // so preview and 512-px export keep the same proportion (#79).
+    canvas.drawShadow(path, const Color(0x55000000), size.shortestSide * 0.024, false);
     canvas.drawPath(path, fill);
     canvas.drawPath(path, stroke);
 

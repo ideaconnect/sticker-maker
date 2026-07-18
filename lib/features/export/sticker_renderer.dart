@@ -249,19 +249,22 @@ abstract final class StickerRenderer {
     canvas.save();
     canvas.translate(-size.width / 2, -size.height / 2);
     BubblePainter(layer).paint(canvas, size);
-    // Caption centred in the body rect (mirrors BubbleView).
-    final body = Rect.fromLTWH(
-      size.width * 0.06,
-      size.height * 0.05,
-      size.width * 0.88,
-      size.height * 0.63,
+    // Caption centred in the body rect — the SAME auto-fit as BubbleView, so
+    // a long caption that wraps in the editor wraps identically in the
+    // exported sticker instead of spilling outside the bubble (#79).
+    final captionRect = bubbleBodyRect(size).deflate(10 * scale);
+    final fontSize = bubbleFitFontSize(
+      text: layer.text,
+      fontFamily: layer.fontFamily,
+      maxSize: layer.fontSize * scale,
+      bounds: captionRect.size,
     );
     final tp = TextPainter(
       text: TextSpan(
         text: layer.text,
         style: TextStyle(
           fontFamily: layer.fontFamily,
-          fontSize: layer.fontSize * scale,
+          fontSize: fontSize,
           height: 1.05,
           color: layer.textColor,
           fontWeight: FontWeight.w700,
@@ -269,10 +272,13 @@ abstract final class StickerRenderer {
       ),
       textAlign: TextAlign.center,
       textDirection: TextDirection.ltr,
-    )..layout(maxWidth: body.width - 20 * scale);
+    )..layout(maxWidth: captionRect.width);
     tp.paint(
       canvas,
-      Offset(body.center.dx - tp.width / 2, body.center.dy - tp.height / 2),
+      Offset(
+        captionRect.center.dx - tp.width / 2,
+        captionRect.center.dy - tp.height / 2,
+      ),
     );
     canvas.restore();
   }

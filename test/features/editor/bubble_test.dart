@@ -126,6 +126,26 @@ void main() {
       expect(roundTripped.dy, closeTo(tail.dy, 0.001));
     });
 
+    test('bubbleFitFontSize shrinks long captions to fit (#79)', () {
+      final bounds = bubbleBodyRect(kBubbleBaseSize).deflate(10).size;
+      final short = bubbleFitFontSize(
+        text: 'Hi!',
+        fontFamily: 'Bangers',
+        maxSize: 26,
+        bounds: bounds,
+      );
+      expect(short, 26, reason: 'short text keeps the requested size');
+
+      final long = bubbleFitFontSize(
+        text: 'a really long caption that keeps going and going ' * 3,
+        fontFamily: 'Bangers',
+        maxSize: 26,
+        bounds: bounds,
+      );
+      expect(long, lessThan(26));
+      expect(long, greaterThanOrEqualTo(6));
+    });
+
     test('every shape paints with tails in all four directions', () {
       for (final shape in BubbleShape.values) {
         for (final tail in const [
