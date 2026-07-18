@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:image/image.dart' as img;
 
@@ -98,7 +99,11 @@ abstract final class StickerEncoder {
     int frameDurationMs = 0,
   }) async {
     final image = await StickerRenderer.renderImage(frame, size: size);
-    final data = await image.toByteData(); // rawRgba (default)
+    // Straight (un-premultiplied) RGBA — package:image works in straight alpha,
+    // so premultiplied `rawRgba` would darken semi-transparent edges.
+    final data = await image.toByteData(
+      format: ui.ImageByteFormat.rawStraightRgba,
+    );
     image.dispose();
     if (data == null) throw StateError('failed to rasterize a frame');
     return img.Image.fromBytes(
@@ -108,6 +113,52 @@ abstract final class StickerEncoder {
       numChannels: 4,
       frameDuration: frameDurationMs,
     );
+  }
+
+  /// Converts a straight-alpha RGBA frame into a GIF-ready **palette** image
+  /// whose palette reserves index 0 as fully transparent. GIF has 1-bit alpha,
+  /// so pixels below [alphaThreshold] become transparent and the rest are
+  /// quantized to the remaining ≤255 colours.
+  ///
+  /// Without this, `package:image`'s default GIF quantizer produces an opaque
+  /// RGB palette (no alpha-0 entry), so the encoder never flags transparency and
+  /// every transparent pixel flattens to black. Passing an already-palettized
+  /// frame also skips the encoder's re-quantization, keeping our alpha-0 index.
+  static img.Image _toTransparentPaletteFrame(
+    img.Image rgba, {
+    int alphaThreshold = 128,
+  }) {
+    // Quantize colours to ≤255 entries — index 0 is reserved for transparency.
+    final quantizer = img.OctreeQuantizer(rgba, numberOfColors: 255);
+    final src = quantizer.palette;
+    final colors = src.numColors;
+
+    final palette = img.PaletteUint8(colors + 1, 4)..setRgba(0, 0, 0, 0, 0);
+    for (var i = 0; i < colors; i++) {
+      palette.setRgba(
+        i + 1,
+        src.getRed(i),
+        src.getGreen(i),
+        src.getBlue(i),
+        255,
+      );
+    }
+
+    final out = img.Image(
+      width: rgba.width,
+      height: rgba.height,
+      numChannels: 1,
+      palette: palette,
+    )..frameDuration = rgba.frameDuration;
+
+    for (final p in rgba) {
+      final index = p.a < alphaThreshold
+          ? 0
+          : quantizer.getColorIndexRgb(p.r.toInt(), p.g.toInt(), p.b.toInt()) +
+                1;
+      out.setPixelIndex(p.x, p.y, index);
+    }
+    return out;
   }
 
   /// Encodes [frames] as an animated GIF at [fps] (looping). Each frame is
@@ -123,11 +174,10 @@ abstract final class StickerEncoder {
     final durationMs = (1000 / fps).round().clamp(20, 10000);
     img.Image? animation;
     for (final frame in frames) {
-      final frameImage = await _renderRgba(
-        frame,
-        size,
-        frameDurationMs: durationMs,
-      );
+      final rgba = await _renderRgba(frame, size, frameDurationMs: durationMs);
+      // Palettize with a reserved transparent index so the background stays
+      // transparent instead of flattening to black.
+      final frameImage = _toTransparentPaletteFrame(rgba);
       if (animation == null) {
         animation = frameImage;
       } else {

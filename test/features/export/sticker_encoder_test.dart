@@ -125,5 +125,34 @@ void main() {
       expect(decoded, isNotNull);
       expect(decoded!.numFrames, 2);
     });
+
+    test('keeps the background transparent (not flattened to black)', () async {
+      const frames = [
+        Frame(
+          id: 'f0',
+          layers: [
+            TextLayer(id: 'a', name: 'A', text: 'A', fontFamily: 'Rubik'),
+          ],
+        ),
+        Frame(
+          id: 'f1',
+          layers: [
+            TextLayer(id: 'b', name: 'B', text: 'B', fontFamily: 'Rubik'),
+          ],
+        ),
+      ];
+      final sticker = await StickerEncoder.gif(frames, size: 32);
+      final decoded = img.decodeGif(sticker.bytes)!;
+
+      // Every frame's corners were transparent in the source; GIF 1-bit alpha
+      // must keep them transparent rather than opaque black (the export bug).
+      for (final frame in decoded.frames) {
+        expect(
+          frame.getPixel(0, 0).a,
+          0,
+          reason: 'corner should stay transparent on every frame',
+        );
+      }
+    });
   });
 }
