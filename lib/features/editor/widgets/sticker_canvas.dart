@@ -100,6 +100,8 @@ class StickerCanvas extends StatelessWidget {
         maskPath: maskPath,
         side: base,
         colorFilter: colorFilter,
+        outlineWidthPx: layer.outlineWidth * scale,
+        outlineColor: layer.outlineColor,
       );
     }
 
@@ -128,12 +130,16 @@ class _MaskedImage extends StatefulWidget {
     required this.maskPath,
     required this.side,
     this.colorFilter,
+    this.outlineWidthPx = 0,
+    this.outlineColor = const Color(0xFFFFFFFF),
   });
 
   final String imagePath;
   final String maskPath;
   final double side;
   final ColorFilter? colorFilter;
+  final double outlineWidthPx;
+  final Color outlineColor;
 
   @override
   State<_MaskedImage> createState() => _MaskedImageState();
@@ -213,6 +219,8 @@ class _MaskedImageState extends State<_MaskedImage> {
         base: base,
         mask: _mask,
         colorFilter: widget.colorFilter,
+        outlineWidthPx: widget.outlineWidthPx,
+        outlineColor: widget.outlineColor,
       ),
     );
   }
@@ -222,11 +230,19 @@ class _MaskedImageState extends State<_MaskedImage> {
 /// [mask] via `BlendMode.dstIn`. [mask] shares the photo's aspect ratio, so it
 /// maps onto the same destination rect.
 class _MaskedImagePainter extends CustomPainter {
-  _MaskedImagePainter({required this.base, this.mask, this.colorFilter});
+  _MaskedImagePainter({
+    required this.base,
+    this.mask,
+    this.colorFilter,
+    this.outlineWidthPx = 0,
+    this.outlineColor = const Color(0xFFFFFFFF),
+  });
 
   final ui.Image base;
   final ui.Image? mask;
   final ColorFilter? colorFilter;
+  final double outlineWidthPx;
+  final Color outlineColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -246,12 +262,19 @@ class _MaskedImagePainter extends CustomPainter {
       return;
     }
 
+    final maskSize = Size(
+      maskImage.width.toDouble(),
+      maskImage.height.toDouble(),
+    );
+    // Die-cut contour behind the subject.
+    if (outlineWidthPx > 0) {
+      _paintDieCut(canvas, imageSize, maskSize, dest);
+    }
     canvas.saveLayer(dest, Paint());
     canvas.drawImageRect(base, Offset.zero & imageSize, dest, basePaint);
     canvas.drawImageRect(
       maskImage,
-      Offset.zero &
-          Size(maskImage.width.toDouble(), maskImage.height.toDouble()),
+      Offset.zero & maskSize,
       dest,
       Paint()
         ..blendMode = BlendMode.dstIn
@@ -260,9 +283,51 @@ class _MaskedImagePainter extends CustomPainter {
     canvas.restore();
   }
 
+  /// Solid [outlineColor] silhouette of the subject, grown by [outlineWidthPx]
+  /// via a morphological dilate, painted before the subject. Mirrors
+  /// StickerRenderer._paintDieCut so preview and export match.
+  void _paintDieCut(Canvas canvas, Size imageSize, Size maskSize, Rect dest) {
+    final inflated = dest.inflate(outlineWidthPx + 2);
+    canvas.saveLayer(
+      inflated,
+      Paint()
+        ..imageFilter = ui.ImageFilter.dilate(
+          radiusX: outlineWidthPx,
+          radiusY: outlineWidthPx,
+        ),
+    );
+    canvas.saveLayer(dest, Paint());
+    canvas.drawImageRect(
+      base,
+      Offset.zero & imageSize,
+      dest,
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+    canvas.drawImageRect(
+      mask!,
+      Offset.zero & maskSize,
+      dest,
+      Paint()
+        ..blendMode = BlendMode.dstIn
+        ..filterQuality = FilterQuality.medium,
+    );
+    canvas.drawRect(
+      dest,
+      Paint()
+        ..color = outlineColor
+        ..blendMode = BlendMode.srcIn,
+    );
+    canvas.restore();
+    canvas.restore();
+  }
+
   @override
   bool shouldRepaint(_MaskedImagePainter old) =>
-      old.base != base || old.mask != mask || old.colorFilter != colorFilter;
+      old.base != base ||
+      old.mask != mask ||
+      old.colorFilter != colorFilter ||
+      old.outlineWidthPx != outlineWidthPx ||
+      old.outlineColor != outlineColor;
 }
 
 /// Stand-in for an image layer until real pixels arrive in #21.

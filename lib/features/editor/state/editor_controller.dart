@@ -312,6 +312,18 @@ class EditorController extends Notifier<EditorState> {
         image: (l) => l.copyWith(adjustments: adjustments),
       );
 
+  /// Sets the die-cut outline width (logical px; 0 disables) and/or color for a
+  /// cut-out image layer. Coalesces consecutive slider ticks into one undo step.
+  void updateImageOutline(String id, {double? width, Color? color}) =>
+      _updateLayer(
+        id,
+        coalesce: 'outline:$id',
+        image: (l) => l.copyWith(
+          outlineWidth: width ?? l.outlineWidth,
+          outlineColor: color ?? l.outlineColor,
+        ),
+      );
+
   void setImageMask(String id, String? maskPath) => _updateLayer(
     id,
     image: (l) => maskPath == null

@@ -156,6 +156,30 @@ void main() {
     expect(img.adjustments, adj);
   });
 
+  test('updateImageOutline sets width and color; coalesces to one undo', () {
+    final h = harness(twoLayerProject());
+    ImageLayer img() =>
+        h.container
+                .read(editorControllerProvider)
+                .layers
+                .firstWhere((l) => l.id == 'img')
+            as ImageLayer;
+
+    expect(img().hasOutline, isFalse, reason: 'off by default');
+
+    // Consecutive slider ticks coalesce (coalesce: outline:img).
+    h.controller.updateImageOutline('img', width: 8);
+    h.controller.updateImageOutline('img', width: 16);
+    h.controller.updateImageOutline('img', color: const Color(0xFFFF0000));
+    expect(img().outlineWidth, 16);
+    expect(img().outlineColor, const Color(0xFFFF0000));
+    expect(img().hasOutline, isTrue);
+
+    // The coalesced edits undo together, back to no outline.
+    h.controller.undo();
+    expect(img().hasOutline, isFalse);
+  });
+
   test('setImageMask sets and clears the mask path', () {
     final h = harness(twoLayerProject());
     h.controller.setImageMask('img', 'img.mask.png');

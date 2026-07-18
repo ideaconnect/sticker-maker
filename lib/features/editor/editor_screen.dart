@@ -360,6 +360,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             onTap: () {
               _controller.updateImageAdjustments(id, ImageAdjustments.identity);
               _controller.setOpacity(id, 1);
+              _controller.updateImageOutline(id, width: 0);
             },
           ),
         ),
@@ -411,6 +412,18 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           accent: AppColors.green,
           valueLabel: '${(selected.opacity * 100).round()}%',
           onChanged: (v) => _controller.setOpacity(id, v / 100),
+          onChangeEnd: _endSliderEdit,
+        ),
+        LabeledSlider(
+          label: 'Die-cut outline',
+          value: selected.outlineWidth,
+          min: 0,
+          max: 40,
+          accent: AppColors.violetLight,
+          valueLabel: selected.outlineWidth < 0.5
+              ? 'Off'
+              : selected.outlineWidth.round().toString(),
+          onChanged: (v) => _controller.updateImageOutline(id, width: v),
           onChangeEnd: _endSliderEdit,
         ),
       ],

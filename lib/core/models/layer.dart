@@ -67,6 +67,8 @@ final class ImageLayer extends Layer {
     super.opacity = 1.0,
     this.maskPath,
     this.adjustments = ImageAdjustments.identity,
+    this.outlineWidth = 0,
+    this.outlineColor = const Color(0xFFFFFFFF),
   });
 
   /// Project-relative path to the source image.
@@ -77,6 +79,16 @@ final class ImageLayer extends Layer {
   final String? maskPath;
 
   final ImageAdjustments adjustments;
+
+  /// Die-cut contour width in logical (512-canvas) pixels. `0` disables the
+  /// outline. Only meaningful for a cut-out layer (one with a [maskPath]).
+  final double outlineWidth;
+
+  /// The die-cut contour color (classic sticker white by default).
+  final Color outlineColor;
+
+  /// Whether a die-cut outline is currently drawn.
+  bool get hasOutline => outlineWidth > 0;
 
   @override
   String get type => 'image';
@@ -91,6 +103,8 @@ final class ImageLayer extends Layer {
     String? maskPath,
     bool clearMask = false,
     ImageAdjustments? adjustments,
+    double? outlineWidth,
+    Color? outlineColor,
   }) {
     return ImageLayer(
       id: id ?? this.id,
@@ -101,6 +115,8 @@ final class ImageLayer extends Layer {
       assetPath: assetPath ?? this.assetPath,
       maskPath: clearMask ? null : (maskPath ?? this.maskPath),
       adjustments: adjustments ?? this.adjustments,
+      outlineWidth: outlineWidth ?? this.outlineWidth,
+      outlineColor: outlineColor ?? this.outlineColor,
     );
   }
 
@@ -110,6 +126,8 @@ final class ImageLayer extends Layer {
     'assetPath': assetPath,
     'maskPath': maskPath,
     'adjustments': adjustments.toJson(),
+    'outlineWidth': outlineWidth,
+    'outlineColor': outlineColor.toARGB32(),
   };
 
   factory ImageLayer.fromJson(Map<String, dynamic> json) {
@@ -126,6 +144,8 @@ final class ImageLayer extends Layer {
       adjustments: ImageAdjustments.fromJson(
         (json['adjustments'] as Map?)?.cast<String, dynamic>() ?? const {},
       ),
+      outlineWidth: (json['outlineWidth'] as num?)?.toDouble() ?? 0,
+      outlineColor: Color(json['outlineColor'] as int? ?? 0xFFFFFFFF),
     );
   }
 
@@ -139,7 +159,9 @@ final class ImageLayer extends Layer {
       other.opacity == opacity &&
       other.assetPath == assetPath &&
       other.maskPath == maskPath &&
-      other.adjustments == adjustments;
+      other.adjustments == adjustments &&
+      other.outlineWidth == outlineWidth &&
+      other.outlineColor == outlineColor;
 
   @override
   int get hashCode => Object.hash(
@@ -151,6 +173,8 @@ final class ImageLayer extends Layer {
     assetPath,
     maskPath,
     adjustments,
+    outlineWidth,
+    outlineColor,
   );
 }
 

@@ -112,9 +112,22 @@ abstract final class StickerRenderer {
       canvas.drawImageRect(base, Offset.zero & imgSize, dest, basePaint);
       return;
     }
+    final maskSize = Size(mask.width.toDouble(), mask.height.toDouble());
+    // Die-cut contour (behind the subject), so a white ring shows at the edges.
+    if (layer.hasOutline) {
+      _paintDieCut(
+        canvas,
+        base,
+        mask,
+        imgSize,
+        maskSize,
+        dest,
+        layer.outlineColor,
+        layer.outlineWidth * scale,
+      );
+    }
     canvas.saveLayer(dest, Paint());
     canvas.drawImageRect(base, Offset.zero & imgSize, dest, basePaint);
-    final maskSize = Size(mask.width.toDouble(), mask.height.toDouble());
     canvas.drawImageRect(
       mask,
       Offset.zero & maskSize,
@@ -123,6 +136,56 @@ abstract final class StickerRenderer {
         ..blendMode = BlendMode.dstIn
         ..filterQuality = FilterQuality.high,
     );
+    canvas.restore();
+  }
+
+  /// Paints a solid [color] die-cut silhouette of the cut-out subject, grown by
+  /// [radiusPx] via a morphological dilate — drawn *before* the subject so only
+  /// the surrounding ring remains visible. Shared technique with the on-canvas
+  /// painter (`_MaskedImagePainter`).
+  static void _paintDieCut(
+    Canvas canvas,
+    ui.Image base,
+    ui.Image mask,
+    Size imgSize,
+    Size maskSize,
+    Rect dest,
+    Color color,
+    double radiusPx,
+  ) {
+    if (radiusPx <= 0) return;
+    final inflated = dest.inflate(radiusPx + 2);
+    canvas.saveLayer(
+      inflated,
+      Paint()
+        ..imageFilter = ui.ImageFilter.dilate(
+          radiusX: radiusPx,
+          radiusY: radiusPx,
+        ),
+    );
+    // Subject alpha silhouette (base ∩ mask), then flattened to a solid color.
+    canvas.saveLayer(dest, Paint());
+    canvas.drawImageRect(
+      base,
+      Offset.zero & imgSize,
+      dest,
+      Paint()..filterQuality = FilterQuality.high,
+    );
+    canvas.drawImageRect(
+      mask,
+      Offset.zero & maskSize,
+      dest,
+      Paint()
+        ..blendMode = BlendMode.dstIn
+        ..filterQuality = FilterQuality.high,
+    );
+    canvas.drawRect(
+      dest,
+      Paint()
+        ..color = color
+        ..blendMode = BlendMode.srcIn,
+    );
+    canvas.restore();
     canvas.restore();
   }
 
