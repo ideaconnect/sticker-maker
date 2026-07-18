@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sticker_maker/app/app.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
+import 'package:sticker_maker/core/settings/settings_store.dart';
 import 'package:sticker_maker/features/home/project_repository.dart';
 import 'package:sticker_maker/features/packs/pack_repository.dart';
 import 'package:sticker_maker/features/packs/sticker_pack.dart';
@@ -45,6 +46,8 @@ void main() {
           // Resolve immediately so pumpAndSettle doesn't hang on real file IO.
           savedProjectsProvider.overrideWith((ref) => <StickerProject>[]),
           savedPacksProvider.overrideWith((ref) => <StickerPack>[]),
+          // These tests exercise the app past first-run onboarding.
+          onboardingSeenProvider.overrideWith((ref) => true),
         ],
         child: const StickerMakerApp(),
       ),

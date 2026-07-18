@@ -5,6 +5,7 @@ import '../features/editor/editor_screen.dart';
 import '../features/export/export_screen.dart';
 import '../features/gallery/gallery_screen.dart';
 import '../features/home/home_screen.dart';
+import '../features/onboarding/onboarding_screen.dart';
 import '../features/packs/pack_detail_screen.dart';
 import '../features/packs/packs_screen.dart';
 
@@ -13,6 +14,7 @@ import '../features/packs/packs_screen.dart';
 abstract final class Routes {
   Routes._();
   static const home = 'home';
+  static const onboarding = 'onboarding';
   static const editor = 'editor';
   static const export = 'export';
   static const gallery = 'gallery';
@@ -23,14 +25,19 @@ abstract final class Routes {
 /// Builds the app's [GoRouter]. Home → Editor → Export is a push-style
 /// drill-down so the Android back button pops correctly. Created per app
 /// instance (see `StickerMakerApp`) so navigation state never leaks between
-/// tests.
-GoRouter createAppRouter() => GoRouter(
-  initialLocation: '/',
+/// tests. [initialLocation] is `/onboarding` on first run, `/` thereafter.
+GoRouter createAppRouter({String initialLocation = '/'}) => GoRouter(
+  initialLocation: initialLocation,
   routes: [
     GoRoute(
       path: '/',
       name: Routes.home,
       builder: (context, state) => const HomeScreen(),
+    ),
+    GoRoute(
+      path: '/onboarding',
+      name: Routes.onboarding,
+      builder: (context, state) => const OnboardingScreen(),
     ),
     GoRoute(
       path: '/editor',

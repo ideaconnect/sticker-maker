@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sticker_maker/app/app.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
+import 'package:sticker_maker/core/settings/settings_store.dart';
 import 'package:sticker_maker/features/home/project_repository.dart';
 import 'package:sticker_maker/features/templates/sticker_templates.dart';
 
@@ -68,6 +69,7 @@ void main() {
               ProjectRepository(baseDir: tempDir),
             ),
             savedProjectsProvider.overrideWith((ref) => <StickerProject>[]),
+            onboardingSeenProvider.overrideWith((ref) => true),
           ],
           child: const StickerMakerApp(),
         ),
