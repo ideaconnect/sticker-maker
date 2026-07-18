@@ -9,12 +9,12 @@ import 'sticker_pack.dart';
 /// Persists [StickerPack]s as JSON manifests under `<docs>/packs/<id>.json`.
 /// Mirrors ProjectRepository.
 class PackRepository {
-  PackRepository({Directory? baseDir}) : _baseDir = baseDir;
+  PackRepository({Directory? baseDir}) : _baseOverride = baseDir;
 
-  final Directory? _baseDir;
+  final Directory? _baseOverride;
 
   Future<Directory> _dir() async {
-    final base = _baseDir ?? await getApplicationDocumentsDirectory();
+    final base = _baseOverride ?? await getApplicationDocumentsDirectory();
     final dir = Directory('${base.path}/packs');
     if (!dir.existsSync()) await dir.create(recursive: true);
     return dir;

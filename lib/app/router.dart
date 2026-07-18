@@ -5,6 +5,8 @@ import '../features/editor/editor_screen.dart';
 import '../features/export/export_screen.dart';
 import '../features/gallery/gallery_screen.dart';
 import '../features/home/home_screen.dart';
+import '../features/packs/pack_detail_screen.dart';
+import '../features/packs/packs_screen.dart';
 
 /// App route names, referenced by widgets via `context.goNamed(...)` /
 /// `context.pushNamed(...)`.
@@ -14,6 +16,8 @@ abstract final class Routes {
   static const editor = 'editor';
   static const export = 'export';
   static const gallery = 'gallery';
+  static const packs = 'packs';
+  static const packDetail = 'packDetail';
 }
 
 /// Builds the app's [GoRouter]. Home → Editor → Export is a push-style
@@ -37,6 +41,17 @@ GoRouter createAppRouter() => GoRouter(
       path: '/export',
       name: Routes.export,
       builder: (context, state) => const ExportScreen(),
+    ),
+    GoRoute(
+      path: '/packs',
+      name: Routes.packs,
+      builder: (context, state) => const PacksScreen(),
+    ),
+    GoRoute(
+      path: '/pack/:id',
+      name: Routes.packDetail,
+      builder: (context, state) =>
+          PackDetailScreen(packId: state.pathParameters['id']!),
     ),
     // Developer-only design-system gallery: never registered in release builds.
     if (kDebugMode)

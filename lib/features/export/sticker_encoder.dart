@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:image/image.dart' as img;
 
@@ -74,7 +73,7 @@ abstract final class StickerEncoder {
     img.Image? animation;
     for (final frame in frames) {
       final image = await StickerRenderer.renderImage(frame, size: size);
-      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final data = await image.toByteData(); // rawRgba (default)
       image.dispose();
       if (data == null) throw StateError('failed to rasterize a GIF frame');
       final frameImage = img.Image.fromBytes(

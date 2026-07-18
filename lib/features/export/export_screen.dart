@@ -77,7 +77,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     final project = ref.read(editorControllerProvider).project;
     try {
       final sticker = _useGif(project)
-          ? await StickerEncoder.gif(project.frames, size: 512, fps: 12)
+          ? await StickerEncoder.gif(project.frames, fps: 12)
           : await StickerEncoder.png(project.currentFrame, size: _pngSize());
       if (mounted) {
         setState(() => _sizeLabel = _formatBytes(sticker.byteLength));
@@ -97,7 +97,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     try {
       final project = ref.read(editorControllerProvider).project;
       final sticker = _useGif(project)
-          ? await StickerEncoder.gif(project.frames, size: 512, fps: 12)
+          ? await StickerEncoder.gif(project.frames, fps: 12)
           : await StickerEncoder.png(project.currentFrame, size: _pngSize());
       final dir = await getTemporaryDirectory();
       final name = _sanitize(project.name);

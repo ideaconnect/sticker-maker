@@ -38,7 +38,7 @@ void main() {
 
     test('non-512 dimensions fail', () {
       final issues = ComplianceValidator.validateSticker(
-        wa(width: 400, height: 512),
+        wa(width: 400),
         StickerTarget.whatsapp,
       );
       expect(_messages(issues).join(), contains('512×512'));
@@ -106,7 +106,7 @@ void main() {
     });
 
     test('a compliant WebM video sticker has no issues', () {
-      final s = StickerCandidate(
+      const s = StickerCandidate(
         byteLength: 200 * 1024,
         width: 512,
         height: 512,
@@ -121,7 +121,7 @@ void main() {
     });
 
     test('a video over 3 s or 256 KB fails', () {
-      final s = StickerCandidate(
+      const s = StickerCandidate(
         byteLength: 300 * 1024,
         width: 512,
         height: 512,
@@ -137,7 +137,7 @@ void main() {
     });
 
     test('a non-WebM animated sticker fails', () {
-      final s = StickerCandidate(
+      const s = StickerCandidate(
         byteLength: 100 * 1024,
         width: 512,
         height: 512,

@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sticker_maker/app/app.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
 import 'package:sticker_maker/features/home/project_repository.dart';
+import 'package:sticker_maker/features/packs/pack_repository.dart';
+import 'package:sticker_maker/features/packs/sticker_pack.dart';
 
 void main() {
   late Directory tempDir;
@@ -37,8 +39,12 @@ void main() {
           projectRepositoryProvider.overrideWithValue(
             ProjectRepository(baseDir: tempDir),
           ),
+          packRepositoryProvider.overrideWithValue(
+            PackRepository(baseDir: tempDir),
+          ),
           // Resolve immediately so pumpAndSettle doesn't hang on real file IO.
           savedProjectsProvider.overrideWith((ref) => <StickerProject>[]),
+          savedPacksProvider.overrideWith((ref) => <StickerPack>[]),
         ],
         child: const StickerMakerApp(),
       ),
@@ -77,6 +83,17 @@ void main() {
 
     expect(find.text('Export sticker'), findsOneWidget);
     expect(find.text('WhatsApp'), findsOneWidget);
+  });
+
+  testWidgets('Home "Sticker packs" opens the packs manager', (tester) async {
+    await pumpApp(tester);
+
+    await tester.tap(find.text('Sticker packs'));
+    await tester.pumpAndSettle();
+
+    // PacksScreen empty state (unique to that screen).
+    expect(find.text('No packs yet'), findsOneWidget);
+    expect(find.text('New pack'), findsOneWidget);
   });
 
   testWidgets('Editor back button pops to Home (real back stack)', (
