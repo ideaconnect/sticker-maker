@@ -24,10 +24,10 @@ class EncodedSticker {
   int get byteLength => bytes.length;
 }
 
-/// Static sticker encoders. PNG is native (transparent); the budget search
-/// downscales until the output fits a per-target byte cap (WhatsApp static
-/// ≤ 100 KB, etc.). Animated encoders (GIF #40, WebP/WebM #41/#42) build on the
-/// same [StickerRenderer].
+/// Static sticker encoders. PNG and (lossless, transparent) WebP are pure Dart;
+/// the budget search downscales until the output fits a per-target byte cap
+/// (WhatsApp static ≤ 100 KB, etc.). Animated GIF ships here too; animated WebP
+/// and WebM VP9 are the remaining native encoders (#42b).
 abstract final class StickerEncoder {
   StickerEncoder._();
 
@@ -59,6 +59,57 @@ abstract final class StickerEncoder {
     );
   }
 
+  /// Encodes [frame] to a transparent, lossless **WebP** at [size] — the format
+  /// WhatsApp and Telegram require for static stickers. Pure Dart (VP8L via
+  /// `package:image`), so no native/FFI dependency; alpha is preserved.
+  static Future<EncodedSticker> webp(Frame frame, {int size = 512}) async {
+    final bytes = await _webpBytes(frame, size);
+    return EncodedSticker(bytes: bytes, size: size, format: 'webp');
+  }
+
+  /// WebP at the largest [sizes] fitting [maxBytes] (e.g. WhatsApp's 100 KB).
+  static Future<EncodedSticker> webpWithinBudget(
+    Frame frame, {
+    required int maxBytes,
+    List<int> sizes = defaultSizes,
+  }) async {
+    final chosen = await fitToBudget(
+      (size) => _webpBytes(frame, size),
+      maxBytes: maxBytes,
+      sizes: sizes,
+    );
+    return EncodedSticker(
+      bytes: chosen.bytes,
+      size: chosen.size,
+      format: 'webp',
+    );
+  }
+
+  static Future<Uint8List> _webpBytes(Frame frame, int size) async {
+    final image = await _renderRgba(frame, size);
+    return img.encodeWebP(image);
+  }
+
+  /// Renders [frame] to a `package:image` RGBA [img.Image] at [size]. Shared by
+  /// the WebP and GIF encoders. [frameDurationMs] stamps animation timing.
+  static Future<img.Image> _renderRgba(
+    Frame frame,
+    int size, {
+    int frameDurationMs = 0,
+  }) async {
+    final image = await StickerRenderer.renderImage(frame, size: size);
+    final data = await image.toByteData(); // rawRgba (default)
+    image.dispose();
+    if (data == null) throw StateError('failed to rasterize a frame');
+    return img.Image.fromBytes(
+      width: size,
+      height: size,
+      bytes: data.buffer,
+      numChannels: 4,
+      frameDuration: frameDurationMs,
+    );
+  }
+
   /// Encodes [frames] as an animated GIF at [fps] (looping). Each frame is
   /// rendered via [StickerRenderer] then combined; GIF's 256-colour palette +
   /// 1-bit transparency are handled by the encoder. CPU-heavy — a large GIF
@@ -72,16 +123,10 @@ abstract final class StickerEncoder {
     final durationMs = (1000 / fps).round().clamp(20, 10000);
     img.Image? animation;
     for (final frame in frames) {
-      final image = await StickerRenderer.renderImage(frame, size: size);
-      final data = await image.toByteData(); // rawRgba (default)
-      image.dispose();
-      if (data == null) throw StateError('failed to rasterize a GIF frame');
-      final frameImage = img.Image.fromBytes(
-        width: size,
-        height: size,
-        bytes: data.buffer,
-        numChannels: 4,
-        frameDuration: durationMs,
+      final frameImage = await _renderRgba(
+        frame,
+        size,
+        frameDurationMs: durationMs,
       );
       if (animation == null) {
         animation = frameImage;

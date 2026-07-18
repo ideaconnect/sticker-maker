@@ -71,6 +71,36 @@ void main() {
     });
   });
 
+  group('webp', () {
+    const frame = Frame(
+      id: 'f',
+      layers: [TextLayer(id: 't', name: 'W', text: 'W', fontFamily: 'Rubik')],
+    );
+
+    test('encodes a valid transparent WebP that round-trips', () async {
+      final sticker = await StickerEncoder.webp(frame, size: 64);
+      expect(sticker.format, 'webp');
+      expect(sticker.size, 64);
+      // RIFF <size> WEBP container header.
+      expect(String.fromCharCodes(sticker.bytes.sublist(0, 4)), 'RIFF');
+      expect(String.fromCharCodes(sticker.bytes.sublist(8, 12)), 'WEBP');
+
+      final decoded = img.decodeWebP(sticker.bytes);
+      expect(decoded, isNotNull);
+      expect(decoded!.width, 64);
+      expect(decoded.height, 64);
+      // Alpha is preserved (lossless) — a corner pixel is fully transparent.
+      expect(decoded.hasAlpha, isTrue);
+      expect(decoded.getPixel(0, 0).a, 0);
+    });
+
+    test('webpWithinBudget downscales to meet a tiny cap', () async {
+      final capped = await StickerEncoder.webpWithinBudget(frame, maxBytes: 1);
+      expect(capped.format, 'webp');
+      expect(capped.size, StickerEncoder.defaultSizes.last);
+    });
+  });
+
   group('gif', () {
     test('encodes an animated, multi-frame, looping GIF', () async {
       const frames = [

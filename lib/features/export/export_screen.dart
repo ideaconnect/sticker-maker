@@ -40,12 +40,12 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     _Target(
       'whatsapp',
       'WhatsApp',
-      'Sticker file (.png)',
+      'Sticker file (.webp)',
       AppColors.green,
       'W',
     ),
     _Target('png', 'PNG', 'Transparent, 1024px', AppColors.violet, 'P'),
-    _Target('webp', 'WebP', 'Smaller (coming soon)', AppColors.pink, 'WP'),
+    _Target('webp', 'WebP', 'Transparent, lossless', AppColors.pink, 'WP'),
     _Target('gif', 'GIF', 'Animated, shareable', AppColors.amber, 'G'),
   ];
 
@@ -71,14 +71,30 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
 
   int _pngSize() => _target == 'png' ? 1024 : 512;
 
+  /// The static output format for the current target: WhatsApp and the WebP
+  /// target export transparent WebP; everything else PNG.
+  bool _staticIsWebp() => _target == 'whatsapp' || _target == 'webp';
+
+  /// Encodes the current selection for the chosen target.
+  Future<EncodedSticker> _encode(StickerProject project) {
+    if (_useGif(project)) return StickerEncoder.gif(project.frames, fps: 12);
+    if (_target == 'whatsapp') {
+      // WhatsApp's static cap is 100 KB — downscale WebP to fit.
+      return StickerEncoder.webpWithinBudget(
+        project.currentFrame,
+        maxBytes: 100 * 1024,
+      );
+    }
+    if (_target == 'webp') return StickerEncoder.webp(project.currentFrame);
+    return StickerEncoder.png(project.currentFrame, size: _pngSize());
+  }
+
   /// Re-encodes the current selection to show a real size estimate.
   Future<void> _updateEstimate() async {
     setState(() => _sizeLabel = null);
     final project = ref.read(editorControllerProvider).project;
     try {
-      final sticker = _useGif(project)
-          ? await StickerEncoder.gif(project.frames, fps: 12)
-          : await StickerEncoder.png(project.currentFrame, size: _pngSize());
+      final sticker = await _encode(project);
       if (mounted) {
         setState(() => _sizeLabel = _formatBytes(sticker.byteLength));
       }
@@ -89,16 +105,10 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
 
   Future<void> _export() async {
     if (_exporting) return;
-    if (_target == 'webp') {
-      showSmToast(context, 'WebP export is coming soon — try PNG or GIF');
-      return;
-    }
     setState(() => _exporting = true);
     try {
       final project = ref.read(editorControllerProvider).project;
-      final sticker = _useGif(project)
-          ? await StickerEncoder.gif(project.frames, fps: 12)
-          : await StickerEncoder.png(project.currentFrame, size: _pngSize());
+      final sticker = await _encode(project);
       final dir = await getTemporaryDirectory();
       final name = _sanitize(project.name);
       final file = File(
@@ -179,7 +189,11 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                       Text(
                         _sizeLabel == null
                             ? 'Estimating…'
-                            : '~$_sizeLabel · ${_useGif(project) ? 'GIF' : 'PNG'}',
+                            : '~$_sizeLabel · ${_useGif(project)
+                                  ? 'GIF'
+                                  : _staticIsWebp()
+                                  ? 'WEBP'
+                                  : 'PNG'}',
                         style: const TextStyle(
                           fontFamily: AppFonts.ui,
                           fontSize: 12.5,
