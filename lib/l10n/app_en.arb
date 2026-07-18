@@ -1,0 +1,27 @@
+{
+  "@@locale": "en",
+  "appTitle": "Sticker Maker",
+  "@appTitle": {
+    "description": "The application name, shown as the OS task title."
+  },
+  "newSticker": "New Sticker",
+  "@newSticker": {
+    "description": "Primary action on Home to start a new sticker."
+  },
+  "recentStickers": "Recent stickers",
+  "@recentStickers": {
+    "description": "Header of the recent-stickers grid on Home."
+  },
+  "seeAll": "See all",
+  "@seeAll": {
+    "description": "Link that opens the full, searchable sticker list."
+  },
+  "stickerPacks": "Sticker packs",
+  "@stickerPacks": {
+    "description": "Entry point to the pack manager."
+  },
+  "shareSticker": "Share sticker",
+  "@shareSticker": {
+    "description": "Export/share button label for a static sticker."
+  }
+}

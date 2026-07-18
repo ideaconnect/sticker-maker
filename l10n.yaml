@@ -1,0 +1,7 @@
+# flutter gen-l10n configuration (#64). Generates AppLocalizations from the ARB
+# files in lib/l10n into a real (non-synthetic) source file we import directly.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+nullable-getter: false

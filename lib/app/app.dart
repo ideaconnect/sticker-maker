@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../core/settings/settings_store.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_theme.dart';
+import '../l10n/app_localizations.dart';
 import 'router.dart';
 
 /// Root shell. Resolves the first-run flag, then hosts a [MaterialApp.router]
@@ -51,9 +52,11 @@ class _RouterHostState extends State<_RouterHost> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'Sticker Maker',
+      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
       debugShowCheckedModeBanner: false,
       theme: buildStickerTheme(),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       routerConfig: _router,
     );
   }
@@ -67,6 +70,8 @@ class _Splash extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: buildStickerTheme(),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: const Scaffold(
         backgroundColor: AppColors.pageBackground,
         body: Center(
