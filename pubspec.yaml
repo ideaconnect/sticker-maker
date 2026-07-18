@@ -46,6 +46,12 @@ dependencies:
   flutter_onnxruntime: ^1.8.2
   image: ^4.9.1
   share_plus: ^13.2.1
+  # Animated sticker encoders (#66 / ANIM-1): FFmpeg with libvpx-vp9 (WebM VP9 +
+  # alpha for Telegram) and libwebp (animated WebP for WhatsApp). PINNED exactly:
+  # the "video" tier is pure LGPL-3.0 (binary-verified, no --enable-gpl) — never
+  # switch to the default ffmpeg_kit_flutter_new package, which is GPL. See
+  # docs/decisions/0004-ffmpeg-animated-encoders.md and docs/plans/animated-stickers-plan.md.
+  ffmpeg_kit_flutter_new_video: 2.4.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -77,6 +83,8 @@ flutter:
     # Bundled as a single file (not the whole dir) so conversion sources never
     # ship — the .pth checkpoints live in model_conversion/, out of the bundle.
     - assets/models/u2netp.onnx
+    # FFmpeg (animated encoders, #66) is LGPL — its license text ships in-app.
+    - assets/licenses/LGPL-3.0-ffmpeg.txt
     # Bundled font license texts — shipped in-app (registered into
     # LicenseRegistry) as SIL OFL / Apache-2.0 require. See about/bundled_licenses.dart.
     - assets/fonts/OFL-PlusJakartaSans.txt

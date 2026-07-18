@@ -24,6 +24,12 @@ const bundledLicenses = <BundledLicense>[
   ], 'assets/fonts/LICENSE-LuckiestGuy-Apache.txt'),
   BundledLicense(['Pacifico'], 'assets/fonts/OFL-Pacifico.txt'),
   BundledLicense(['Rubik'], 'assets/fonts/OFL-Rubik.txt'),
+  // FFmpeg native libraries (animated sticker encoders, ANIM-1 #66). The
+  // bundled ffmpeg-kit "video" build is LGPL-3.0, dynamically linked (.so) —
+  // shipping the license text is part of LGPL compliance. See ADR 0004.
+  BundledLicense([
+    'FFmpeg (ffmpeg-kit video build)',
+  ], 'assets/licenses/LGPL-3.0-ffmpeg.txt'),
 ];
 
 /// Registers the bundled font license texts into [LicenseRegistry] so they
