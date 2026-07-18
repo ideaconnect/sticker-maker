@@ -14,10 +14,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sticker_maker/core/models/frame.dart';
 import 'package:sticker_maker/core/models/layer.dart';
+import 'package:sticker_maker/features/export/sticker_encoder.dart';
 import 'package:sticker_maker/features/export/sticker_renderer.dart';
 import 'package:sticker_maker/features/segmentation/engines/mlkit_segmentation_engine.dart';
 import 'package:sticker_maker/features/segmentation/mask_store.dart';
@@ -75,32 +77,47 @@ void main() {
       reason: 'did not just select the whole frame ($coverage)',
     );
 
-    // Render a small transparent cut-out and emit it as base64 on stdout — the
-    // test log survives the post-run uninstall, so it can be decoded + eyeballed.
+    // Build the cut-out frame (photo ∩ mask), then take it all the way through
+    // the export pipeline to a WhatsApp/Telegram-ready transparent WebP — proving
+    // the AI + the WebP encoder work together on real hardware.
     final maskPng = await MaskStore.encodePng(result.mask);
     final maskFile = File('${ext.path}/seg_mask.png')
       ..writeAsBytesSync(maskPng);
-    final cutout = await StickerRenderer.renderPng(
-      Frame(
-        id: 'f',
-        layers: [
-          ImageLayer(
-            id: 'i',
-            name: 'photo',
-            assetPath: fixture.path,
-            maskPath: maskFile.path,
-          ),
-        ],
-      ),
-      size: 192,
+    final cutoutFrame = Frame(
+      id: 'f',
+      layers: [
+        ImageLayer(
+          id: 'i',
+          name: 'photo',
+          assetPath: fixture.path,
+          maskPath: maskFile.path,
+        ),
+      ],
     );
+
+    // PNG render sanity, then the real WebP export.
+    final png = await StickerRenderer.renderPng(cutoutFrame, size: 192);
+    expect(png.length, greaterThan(0));
+
+    final webp = await StickerEncoder.webp(cutoutFrame, size: 192);
+    final decodedWebp = img.decodeWebP(webp.bytes);
+    expect(decodedWebp, isNotNull, reason: 'WebP round-trips on device');
+    expect(
+      decodedWebp!.hasAlpha,
+      isTrue,
+      reason: 'WebP keeps the transparent background',
+    );
+
+    // Emit the WebP as base64 — the test log survives the post-run uninstall.
     // ignore: avoid_print
     print('SEG_COVERAGE:${coverage.toStringAsFixed(4)}');
     // ignore: avoid_print
-    print('SEG_RESULT_B64_START');
+    print('SEG_WEBP_BYTES:${webp.byteLength}');
     // ignore: avoid_print
-    print(base64Encode(cutout));
+    print('SEG_WEBP_B64_START');
     // ignore: avoid_print
-    print('SEG_RESULT_B64_END');
+    print(base64Encode(webp.bytes));
+    // ignore: avoid_print
+    print('SEG_WEBP_B64_END');
   });
 }
