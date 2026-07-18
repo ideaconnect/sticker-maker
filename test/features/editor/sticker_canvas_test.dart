@@ -69,4 +69,29 @@ void main() {
     expect(find.text('Rex'), findsOneWidget); // placeholder label
     expect(find.text('Hi'), findsNWidgets(2)); // caption on top
   });
+
+  group('stickerDecodeTarget (#75)', () {
+    test('scales with box size, dpr and layer zoom, in 256-px steps', () {
+      // 64-logical thumbnail on a 3× screen → one small step.
+      expect(stickerDecodeTarget(side: 64, dpr: 3), 256);
+      // ~310-logical canvas box on a 2.75× phone.
+      expect(stickerDecodeTarget(side: 310, dpr: 2.75), 1024);
+      // The user's pinch zoom buys more pixels…
+      expect(
+        stickerDecodeTarget(side: 310, dpr: 2.75, layerScale: 2),
+        1792,
+      );
+      // …but never beyond the 4096 guard, and shrink never below 256.
+      expect(stickerDecodeTarget(side: 310, dpr: 2.75, layerScale: 6), 4096);
+      expect(stickerDecodeTarget(side: 10, dpr: 1, layerScale: 0.2), 256);
+    });
+
+    test('quantization keeps a continuous pinch from re-decoding', () {
+      // Growing within one 256-step bucket yields the same target.
+      expect(
+        stickerDecodeTarget(side: 310, dpr: 2.75, layerScale: 1.05),
+        stickerDecodeTarget(side: 310, dpr: 2.75, layerScale: 1.10),
+      );
+    });
+  });
 }

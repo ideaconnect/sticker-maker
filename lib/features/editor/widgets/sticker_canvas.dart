@@ -30,12 +30,13 @@ class StickerCanvas extends StatelessWidget {
       builder: (context, constraints) {
         final side = constraints.biggest.shortestSide;
         final scale = side / StickerProject.canvasSize;
+        final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
         return SizedBox.square(
           dimension: side,
           child: Stack(
             children: [
               for (final layer in frame.layers)
-                if (layer.visible) _positioned(layer, side, scale),
+                if (layer.visible) _positioned(layer, side, scale, dpr),
             ],
           ),
         );
@@ -43,7 +44,7 @@ class StickerCanvas extends StatelessWidget {
     );
   }
 
-  Widget _positioned(Layer layer, double side, double scale) {
+  Widget _positioned(Layer layer, double side, double scale, double dpr) {
     final t = layer.transform;
     return Positioned(
       left: t.position.dx * scale,
@@ -56,7 +57,7 @@ class StickerCanvas extends StatelessWidget {
             angle: t.rotation,
             child: Transform.scale(
               scale: t.scale,
-              child: _content(layer, scale),
+              child: _content(layer, scale, dpr),
             ),
           ),
         ),
@@ -64,7 +65,7 @@ class StickerCanvas extends StatelessWidget {
     );
   }
 
-  Widget _content(Layer layer, double scale) {
+  Widget _content(Layer layer, double scale, double dpr) {
     return switch (layer) {
       TextLayer() => StickerCaption(
         text: layer.text,
@@ -75,11 +76,11 @@ class StickerCanvas extends StatelessWidget {
         decorative: layer.decorative,
       ),
       BubbleLayer() => BubbleView(layer: layer, scale: scale),
-      ImageLayer() => _imageContent(layer, scale),
+      ImageLayer() => _imageContent(layer, scale, dpr),
     };
   }
 
-  Widget _imageContent(ImageLayer layer, double scale) {
+  Widget _imageContent(ImageLayer layer, double scale, double dpr) {
     final file = File(layer.assetPath);
     // Show the placeholder synchronously for a missing asset (e.g. the demo /
     // gallery fixtures, or a deleted file) instead of flashing an error frame.
@@ -87,6 +88,14 @@ class StickerCanvas extends StatelessWidget {
       return _ImagePlaceholder(name: layer.name, side: 180 * scale);
     }
     final base = 440.0 * scale; // ~0.86 of the canvas; user scale applied above
+    // Decode only the pixels this box (and the layer's own zoom) can show —
+    // full-res decodes of 2048² sources per widget instance were the top OOM
+    // risk with several photos × frame thumbnails (#75).
+    final target = stickerDecodeTarget(
+      side: base,
+      dpr: dpr,
+      layerScale: layer.transform.scale,
+    );
     final colorFilter = layer.adjustments.isIdentity
         ? null
         : ColorFilter.matrix(layer.adjustments.toColorMatrix());
@@ -100,6 +109,7 @@ class StickerCanvas extends StatelessWidget {
         imagePath: layer.assetPath,
         maskPath: maskPath,
         side: base,
+        decodeTarget: target,
         colorFilter: colorFilter,
         outlineWidthPx: layer.outlineWidth * scale,
         outlineColor: layer.outlineColor,
@@ -111,6 +121,8 @@ class StickerCanvas extends StatelessWidget {
       width: base,
       height: base,
       fit: BoxFit.contain,
+      // Shared via Flutter's ImageCache; sized decode instead of full-res.
+      cacheWidth: target,
       errorBuilder: (_, _, _) =>
           _ImagePlaceholder(name: layer.name, side: 180 * scale),
     );
@@ -121,15 +133,33 @@ class StickerCanvas extends StatelessWidget {
   }
 }
 
+/// The decode width (physical px) for a photo shown in a [side]-logical-px
+/// contain box at [dpr], keeping the layer's own pinch zoom sharp via
+/// [layerScale]. Quantized up to 256-px steps so a pinch doesn't re-decode on
+/// every frame, and clamped to sane bounds; the decoder additionally never
+/// upscales past the source width (#75).
+int stickerDecodeTarget({
+  required double side,
+  required double dpr,
+  double layerScale = 1.0,
+}) {
+  final raw = side * dpr * layerScale.clamp(1.0, 6.0);
+  final quantized = ((raw + 255) ~/ 256) * 256;
+  return quantized < 256 ? 256 : (quantized > 4096 ? 4096 : quantized);
+}
+
 /// Renders a photo with its alpha mask applied — the visible result of an AI
 /// cut-out. Both files are decoded to [ui.Image] and composited with
 /// `BlendMode.dstIn` so the photo survives only where the mask is opaque.
 /// Non-destructive: the source photo and the mask stay separate on disk.
+/// Decodes at [decodeTarget] physical px (never past the source resolution),
+/// so a frame thumbnail holds kilobytes instead of a full 2048² bitmap (#75).
 class _MaskedImage extends StatefulWidget {
   const _MaskedImage({
     required this.imagePath,
     required this.maskPath,
     required this.side,
+    required this.decodeTarget,
     this.colorFilter,
     this.outlineWidthPx = 0,
     this.outlineColor = const Color(0xFFFFFFFF),
@@ -138,6 +168,10 @@ class _MaskedImage extends StatefulWidget {
   final String imagePath;
   final String maskPath;
   final double side;
+
+  /// Decode width in physical px (see [stickerDecodeTarget]).
+  final int decodeTarget;
+
   final ColorFilter? colorFilter;
   final double outlineWidthPx;
   final Color outlineColor;
@@ -149,6 +183,9 @@ class _MaskedImage extends StatefulWidget {
 class _MaskedImageState extends State<_MaskedImage> {
   ui.Image? _base;
   ui.Image? _mask;
+
+  /// The target the current `_base`/`_mask` were decoded at.
+  int _decodedTarget = 0;
 
   /// Bumped on each (re)load so an out-of-order decode from a superseded load
   /// discards its result instead of clobbering the newer one.
@@ -165,13 +202,18 @@ class _MaskedImageState extends State<_MaskedImage> {
     super.didUpdateWidget(old);
     if (old.imagePath != widget.imagePath || old.maskPath != widget.maskPath) {
       _load();
+    } else if (widget.decodeTarget > _decodedTarget) {
+      // More pixels needed (pinch zoom / bigger box) — smaller targets keep
+      // the existing decode; downscaling again would only cost CPU.
+      _load();
     }
   }
 
   Future<void> _load() async {
     final gen = ++_loadGen;
-    final base = await _decode(widget.imagePath);
-    final mask = await _decode(widget.maskPath);
+    final target = widget.decodeTarget;
+    final base = await _decode(widget.imagePath, target);
+    final mask = await _decode(widget.maskPath, target);
     // Superseded by a newer load (or unmounted): drop this stale result.
     if (!mounted || gen != _loadGen) {
       base?.dispose();
@@ -183,18 +225,30 @@ class _MaskedImageState extends State<_MaskedImage> {
       _mask?.dispose();
       _base = base;
       _mask = mask;
+      _decodedTarget = target;
     });
   }
 
-  static Future<ui.Image?> _decode(String path) async {
+  /// Decodes [path] at most [targetWidth] px wide — never upscaled past the
+  /// encoded source size.
+  static Future<ui.Image?> _decode(String path, int targetWidth) async {
     try {
       final bytes = await File(path).readAsBytes();
-      final codec = await ui.instantiateImageCodec(bytes);
+      final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      final descriptor = await ui.ImageDescriptor.encoded(buffer);
+      buffer.dispose();
       try {
-        final frame = await codec.getNextFrame();
-        return frame.image;
+        final codec = descriptor.width > targetWidth
+            ? await descriptor.instantiateCodec(targetWidth: targetWidth)
+            : await descriptor.instantiateCodec();
+        try {
+          final frame = await codec.getNextFrame();
+          return frame.image;
+        } finally {
+          codec.dispose();
+        }
       } finally {
-        codec.dispose();
+        descriptor.dispose();
       }
     } catch (_) {
       return null;
