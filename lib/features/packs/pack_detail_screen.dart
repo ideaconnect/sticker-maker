@@ -14,6 +14,7 @@ import '../home/project_repository.dart';
 import 'pack_dialogs.dart';
 import 'pack_repository.dart';
 import 'sticker_pack.dart';
+import 'telegram_pack_share.dart';
 import 'whatsapp_pack_installer.dart';
 
 /// Edits one sticker pack: add saved stickers, reorder, delete, tag emoji, all
@@ -32,6 +33,7 @@ class _PackDetailScreenState extends ConsumerState<PackDetailScreen> {
   StickerPack? _pack;
   bool _loading = true;
   bool _addingToWhatsApp = false;
+  bool _addingToTelegram = false;
 
   @override
   void initState() {
@@ -213,6 +215,15 @@ class _PackDetailScreenState extends ConsumerState<PackDetailScreen> {
                       onPressed: () => _addToWhatsApp(pack),
                       padding: const EdgeInsets.all(15),
                     ),
+                    const SizedBox(height: 10),
+                    GradientButton(
+                      label: 'Add to Telegram',
+                      icon: Icons.send,
+                      busy: _addingToTelegram,
+                      onPressed: () => _addToTelegram(pack),
+                      padding: const EdgeInsets.all(15),
+                      solidColor: const Color(0xFF229ED9), // Telegram blue
+                    ),
                   ],
                 ],
               ),
@@ -240,6 +251,30 @@ class _PackDetailScreenState extends ConsumerState<PackDetailScreen> {
       if (mounted) showSmToast(context, "Couldn't add to WhatsApp — try again");
     } finally {
       if (mounted) setState(() => _addingToWhatsApp = false);
+    }
+  }
+
+  Future<void> _addToTelegram(StickerPack pack) async {
+    if (_addingToTelegram) return;
+    setState(() => _addingToTelegram = true);
+    try {
+      final all = await ref.read(savedProjectsProvider.future);
+      final byId = {for (final p in all) p.id: p};
+      final export = await ref
+          .read(telegramPackShareProvider)
+          .share(pack, byId);
+      if (mounted) {
+        showSmToast(
+          context,
+          'Shared — send to @Stickers, name it “${export.shortNameSuggestion}”',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        showSmToast(context, "Couldn't share to Telegram — try again");
+      }
+    } finally {
+      if (mounted) setState(() => _addingToTelegram = false);
     }
   }
 
