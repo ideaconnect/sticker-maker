@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:sticker_maker/core/models/frame.dart';
 import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
@@ -50,10 +51,12 @@ void main() {
     expect(export.contentsFile.existsSync(), isTrue);
     expect(export.trayFile.existsSync(), isTrue);
 
-    // Tray is a PNG within WhatsApp's 50 KB cap.
+    // Tray is a 96×96 PNG within WhatsApp's 50 KB cap.
     final tray = export.trayFile.readAsBytesSync();
     expect(tray.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
     expect(tray.length, lessThanOrEqualTo(50 * 1024));
+    final trayImg = img.decodePng(tray)!;
+    expect([trayImg.width, trayImg.height], [96, 96]);
 
     // contents.json schema.
     final wa =
@@ -70,12 +73,14 @@ void main() {
     expect((stickers[0] as Map)['image_file'], '0.webp');
     expect((stickers[1] as Map)['emojis'], ['🐱', '😹']);
 
-    // Each sticker is a valid WebP within the 100 KB static cap.
+    // Each sticker is a valid, exactly-512² WebP within the 100 KB static cap.
     for (var i = 0; i < 3; i++) {
       final bytes = File('${export.directory.path}/$i.webp').readAsBytesSync();
       expect(String.fromCharCodes(bytes.sublist(0, 4)), 'RIFF');
       expect(String.fromCharCodes(bytes.sublist(8, 12)), 'WEBP');
       expect(bytes.length, lessThanOrEqualTo(100 * 1024));
+      final decoded = img.decodeWebP(bytes)!;
+      expect([decoded.width, decoded.height], [512, 512]);
     }
   });
 

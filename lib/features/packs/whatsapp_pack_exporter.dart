@@ -26,15 +26,9 @@ class WhatsAppPackExport {
 /// rendering (no platform channels), so it's fully unit-testable; the native
 /// hand-off to WhatsApp lives in the ContentProvider (#46).
 class WhatsAppPackExporter {
-  WhatsAppPackExporter({
-    Directory? baseDir,
-    this.staticMaxBytes = 100 * 1024, // WhatsApp static sticker cap
-    this.trayMaxBytes = 50 * 1024, // WhatsApp tray icon cap
-  }) : _baseOverride = baseDir;
+  WhatsAppPackExporter({Directory? baseDir}) : _baseOverride = baseDir;
 
   final Directory? _baseOverride;
-  final int staticMaxBytes;
-  final int trayMaxBytes;
 
   /// WhatsApp sticker edge (px).
   static const int stickerEdge = 512;
@@ -62,10 +56,11 @@ class WhatsAppPackExporter {
       final project = projects[sticker.projectId];
       if (project == null) continue;
       firstProject ??= project;
-      final webp = await StickerEncoder.webpWithinBudget(
-        project.currentFrame,
-        maxBytes: staticMaxBytes,
-      );
+      // WhatsApp requires stickers to be *exactly* [stickerEdge]×[stickerEdge]
+      // (the encoder default), never budget-downscaled. Lossless WebP of a
+      // simple sticker is well under the 100 KB cap; a heavy photo cut-out may
+      // exceed it — that needs lossy/animated WebP (native #42b).
+      final webp = await StickerEncoder.webp(project.currentFrame);
       final fileName = '$index.webp';
       await File('${dir.path}/$fileName').writeAsBytes(webp.bytes);
       stickerEntries.add({'image_file': fileName, 'emojis': sticker.emojis});

@@ -21,6 +21,11 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // WhatsApp sticker ContentProvider authority (#46), consumed by the
+        // <provider android:authorities> placeholder in AndroidManifest.
+        manifestPlaceholders["contentProviderAuthority"] =
+            "tech.idct.stickermaker.stickercontentprovider"
     }
 
     buildTypes {

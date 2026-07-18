@@ -6,12 +6,15 @@ import '../../core/models/sticker_project.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/checkerboard.dart';
+import '../../core/widgets/gradient_button.dart';
+import '../../core/widgets/sm_toast.dart';
 import '../editor/widgets/sticker_canvas.dart';
 import '../export/compliance_validator.dart';
 import '../home/project_repository.dart';
 import 'pack_dialogs.dart';
 import 'pack_repository.dart';
 import 'sticker_pack.dart';
+import 'whatsapp_pack_installer.dart';
 
 /// Edits one sticker pack: add saved stickers, reorder, delete, tag emoji, all
 /// with live WhatsApp compliance feedback. Every change is persisted
@@ -28,6 +31,7 @@ class PackDetailScreen extends ConsumerStatefulWidget {
 class _PackDetailScreenState extends ConsumerState<PackDetailScreen> {
   StickerPack? _pack;
   bool _loading = true;
+  bool _addingToWhatsApp = false;
 
   @override
   void initState() {
@@ -197,6 +201,19 @@ class _PackDetailScreenState extends ConsumerState<PackDetailScreen> {
                           ),
                       ],
                     ),
+                  if (!pack.isEmpty &&
+                      issues.every(
+                        (i) => i.severity != IssueSeverity.error,
+                      )) ...[
+                    const SizedBox(height: 20),
+                    GradientButton(
+                      label: 'Add to WhatsApp',
+                      icon: Icons.add_circle_outline,
+                      busy: _addingToWhatsApp,
+                      onPressed: () => _addToWhatsApp(pack),
+                      padding: const EdgeInsets.all(15),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -204,6 +221,26 @@ class _PackDetailScreenState extends ConsumerState<PackDetailScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _addToWhatsApp(StickerPack pack) async {
+    if (_addingToWhatsApp) return;
+    setState(() => _addingToWhatsApp = true);
+    try {
+      final installer = ref.read(whatsAppPackInstallerProvider);
+      if (!await installer.isWhatsAppInstalled()) {
+        if (mounted) showSmToast(context, 'WhatsApp isn’t installed');
+        return;
+      }
+      final all = await ref.read(savedProjectsProvider.future);
+      final byId = {for (final p in all) p.id: p};
+      await installer.addToWhatsApp(pack, byId);
+      if (mounted) showSmToast(context, 'Opening WhatsApp…');
+    } catch (_) {
+      if (mounted) showSmToast(context, "Couldn't add to WhatsApp — try again");
+    } finally {
+      if (mounted) setState(() => _addingToWhatsApp = false);
+    }
   }
 
   Widget _topBar(BuildContext context, String name) {
