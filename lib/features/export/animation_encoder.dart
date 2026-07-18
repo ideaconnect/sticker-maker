@@ -116,6 +116,52 @@ abstract interface class AnimationEncoder {
   });
 }
 
+/// An encoded animation plus the quality-knob value that produced it.
+class BudgetedEncode {
+  const BudgetedEncode({
+    required this.bytes,
+    required this.quality,
+    required this.withinBudget,
+  });
+
+  final Uint8List bytes;
+  final int quality;
+
+  /// False when even the lowest-quality rung exceeded the byte cap — the caller
+  /// gets the best effort and decides whether to refuse the export.
+  final bool withinBudget;
+}
+
+/// Byte-budget search over an [AnimationEncoder]'s quality knob: tries
+/// [qualities] (best first) and returns the first encode within
+/// [spec].maxBytes, else the last (smallest) attempt flagged out-of-budget.
+///
+/// Both platforms pin the 512-px edge exactly, so unlike the static-sticker
+/// budget search this NEVER downscales — quality/bitrate is the only variable.
+Future<BudgetedEncode> encodeWithinBudget(
+  AnimationEncoder encoder,
+  List<RgbaFrame> frames,
+  AnimationSpec spec, {
+  required List<int> qualities,
+}) async {
+  assert(qualities.isNotEmpty, 'need at least one quality rung');
+  late Uint8List last;
+  late int lastQuality;
+  for (final quality in qualities) {
+    last = await encoder.encode(frames, quality: quality, loop: spec.loop);
+    lastQuality = quality;
+    if (last.length <= spec.maxBytes) {
+      return BudgetedEncode(bytes: last, quality: quality, withinBudget: true);
+    }
+  }
+  return BudgetedEncode(bytes: last, quality: lastQuality, withinBudget: false);
+}
+
+/// Quality ladders per target (best first). Telegram's knob is VP9 bitrate in
+/// kbps; WhatsApp's is libwebp 0–100 quality.
+const telegramBitrateLadder = <int>[400, 320, 256, 192, 144, 96, 64];
+const whatsappQualityLadder = <int>[80, 70, 60, 50, 40, 30];
+
 /// Test double: records the last call and returns canned bytes whose length is
 /// `frameCount * quality` so byte-budget searches are deterministic.
 class FakeAnimationEncoder implements AnimationEncoder {
