@@ -52,8 +52,9 @@ sealed class Layer {
   }
 }
 
-/// Comic speech-bubble shapes.
-enum BubbleShape { speech, thought, shout }
+/// Comic speech-bubble shapes. `caption` is a tail-less rounded box for
+/// narration; `whisper` is a speech bubble with a dashed outline (#80).
+enum BubbleShape { speech, thought, shout, caption, whisper }
 
 /// A photo layer, optionally with an alpha mask (from AI cut-out / manual
 /// erase) and per-image color adjustments.

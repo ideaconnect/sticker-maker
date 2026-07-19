@@ -71,6 +71,8 @@ const List<StickerTemplate> stickerTemplates = [
   ),
   StickerTemplate(id: 'love', name: 'Love', buildLayers: _love),
   StickerTemplate(id: 'lol', name: 'LOL', buildLayers: _lol),
+  StickerTemplate(id: 'narrator', name: 'Narrator', buildLayers: _narrator),
+  StickerTemplate(id: 'psst', name: 'Psst…', buildLayers: _psst),
 ];
 
 List<Layer> _woof() => [
@@ -116,5 +118,24 @@ List<Layer> _lol() => [
     at: const Offset(256, 400),
     font: 'LuckiestGuy',
     size: 64,
+  ),
+];
+
+// New bubble shapes (#80): tail-less narration box + dashed whisper.
+List<Layer> _narrator() => [
+  _bubble(
+    't0',
+    'Meanwhile…',
+    at: const Offset(256, 120),
+    shape: BubbleShape.caption,
+  ),
+];
+
+List<Layer> _psst() => [
+  _bubble(
+    't0',
+    'psst!',
+    at: const Offset(300, 150),
+    shape: BubbleShape.whisper,
   ),
 ];

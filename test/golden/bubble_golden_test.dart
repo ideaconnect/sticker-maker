@@ -36,6 +36,19 @@ void main() {
         text: 'This really long caption must stay inside the bubble!',
         tail: Offset(0.3, -1.6),
       ),
+      BubbleLayer(
+        id: 'c',
+        name: 'c',
+        text: 'Meanwhile…',
+        shape: BubbleShape.caption,
+      ),
+      BubbleLayer(
+        id: 'w',
+        name: 'w',
+        text: 'psst!',
+        shape: BubbleShape.whisper,
+        tail: Offset(0.6, 0.9),
+      ),
     ];
     await tester.pumpWidget(
       MaterialApp(
@@ -50,7 +63,7 @@ void main() {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (var row = 0; row < 2; row++)
+                    for (var row = 0; row < 3; row++)
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [

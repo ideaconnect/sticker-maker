@@ -620,20 +620,25 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           EditorTool.text,
           trailing: const _PanelHint('Comic bubble'),
         ),
-        Row(
-          children: [
-            for (final s in BubbleShape.values) ...[
-              Expanded(
-                child: _segTab(
-                  _bubbleShapeLabel(s),
-                  bubble.shape == s,
-                  AppColors.pink,
-                  () => _controller.updateBubbleLayer(id, shape: s),
+        // Five shapes don't fit as equal tabs — horizontal pill scroll (#80).
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final s in BubbleShape.values) ...[
+                SizedBox(
+                  width: 90,
+                  child: _segTab(
+                    _bubbleShapeLabel(s),
+                    bubble.shape == s,
+                    AppColors.pink,
+                    () => _controller.updateBubbleLayer(id, shape: s),
+                  ),
                 ),
-              ),
-              if (s != BubbleShape.values.last) const SizedBox(width: 8),
+                if (s != BubbleShape.values.last) const SizedBox(width: 8),
+              ],
             ],
-          ],
+          ),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -703,6 +708,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     BubbleShape.speech => 'Speech',
     BubbleShape.thought => 'Thought',
     BubbleShape.shout => 'Shout',
+    BubbleShape.caption => 'Caption',
+    BubbleShape.whisper => 'Whisper',
   };
 
   /// A labelled row of 9 color swatches for the bubble fill / outline.

@@ -133,8 +133,11 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
                 StickerCanvas(frame: editor.currentFrame),
               if (selected != null && editor.tool != EditorTool.frames) ...[
                 _selectionOverlay(selected, scale),
-                // Bubbles get a draggable knob at the tail tip (#78).
-                if (selected is BubbleLayer) _tailHandle(selected, scale),
+                // Bubbles get a draggable knob at the tail tip (#78) — except
+                // caption boxes, which have no tail (#80).
+                if (selected is BubbleLayer &&
+                    selected.shape != BubbleShape.caption)
+                  _tailHandle(selected, scale),
               ],
             ],
           ),

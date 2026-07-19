@@ -150,6 +150,9 @@ class BubblePainter extends CustomPainter {
       BubbleShape.speech => _speech(body, size),
       BubbleShape.thought => _thought(body, size),
       BubbleShape.shout => _shout(body, size),
+      BubbleShape.caption => _captionBox(body),
+      // Same silhouette as speech; the outline goes dashed below (#80).
+      BubbleShape.whisper => _speech(body, size),
     };
 
     final fill = Paint()
@@ -163,14 +166,48 @@ class BubblePainter extends CustomPainter {
 
     // Soft drop shadow for the sticker feel — elevation scales with the box
     // so preview and 512-px export keep the same proportion (#79).
-    canvas.drawShadow(path, const Color(0x55000000), size.shortestSide * 0.024, false);
+    canvas.drawShadow(
+      path,
+      const Color(0x55000000),
+      size.shortestSide * 0.024,
+      false,
+    );
     canvas.drawPath(path, fill);
-    canvas.drawPath(path, stroke);
+    if (layer.shape == BubbleShape.whisper) {
+      canvas.drawPath(
+        _dashedOutline(
+          path,
+          size.shortestSide * 0.055,
+          size.shortestSide * 0.035,
+        ),
+        stroke..strokeCap = StrokeCap.round,
+      );
+    } else {
+      canvas.drawPath(path, stroke);
+    }
 
     if (layer.shape == BubbleShape.thought) {
       _thoughtDots(canvas, body, size, fill, stroke);
     }
   }
+
+  /// Rebuilds [source]'s outline as dash segments (whisper).
+  static Path _dashedOutline(Path source, double dash, double gap) {
+    final dashed = Path();
+    for (final metric in source.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final end = math.min(distance + dash, metric.length);
+        dashed.addPath(metric.extractPath(distance, end), Offset.zero);
+        distance = end + gap;
+      }
+    }
+    return dashed;
+  }
+
+  /// Tail-less rounded narration box (#80).
+  static Path _captionBox(Rect body) => Path()
+    ..addRRect(RRect.fromRectAndRadius(body, Radius.circular(body.height * 0.14)));
 
   Offset _tailTip(Size size) => bubbleTailTip(layer, size);
 
@@ -212,8 +249,27 @@ class BubblePainter extends CustomPainter {
         : Path.combine(PathOperation.union, bodyPath, tail);
   }
 
+  /// Cloud-scalloped thought body — quadratic bumps around the body ellipse
+  /// (replaces the old plain oval, which was the weakest-looking shape) (#80).
   Path _thought(Rect body, Size size) {
-    return Path()..addOval(body);
+    const bumps = 9;
+    final rx = body.width / 2;
+    final ry = body.height / 2;
+    final center = body.center;
+    Offset onEllipse(double a) =>
+        Offset(center.dx + math.cos(a) * rx, center.dy + math.sin(a) * ry);
+    final path = Path();
+    const step = 2 * math.pi / bumps;
+    var prev = onEllipse(0);
+    path.moveTo(prev.dx, prev.dy);
+    for (var i = 1; i <= bumps; i++) {
+      final next = onEllipse(step * i);
+      final mid = Offset.lerp(prev, next, 0.5)!;
+      final ctrl = center + (mid - center) * 1.38;
+      path.quadraticBezierTo(ctrl.dx, ctrl.dy, next.dx, next.dy);
+      prev = next;
+    }
+    return path..close();
   }
 
   void _thoughtDots(
