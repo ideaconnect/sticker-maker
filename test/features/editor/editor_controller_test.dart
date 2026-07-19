@@ -424,4 +424,101 @@ void main() {
       expect(h.controller.canRedo, isFalse);
     });
   });
+
+  // Backs the delete-on-supersede mask GC (#review perf 2026-07-19): a
+  // superseded mask file is safe to delete only once no reachable state
+  // references it.
+  group('isMaskReferenced', () {
+    StickerProject oneImageProject() => const StickerProject(
+      id: 'p',
+      name: 'P',
+      frames: [
+        Frame(
+          id: 'f0',
+          layers: [ImageLayer(id: 'img', name: 'Photo', assetPath: 'p.png')],
+        ),
+      ],
+    );
+
+    test('tracks the live document and the current mask', () {
+      final h = harness(oneImageProject());
+      expect(h.controller.isMaskReferenced('m0'), isFalse);
+      h.controller.setImageMask('img', 'm0');
+      expect(h.controller.isMaskReferenced('m0'), isTrue);
+    });
+
+    test('a mask reachable through the redo stack still counts', () {
+      final h = harness(oneImageProject());
+      h.controller.setImageMask('img', 'm0');
+      h.controller.setImageMask('img', 'm1');
+      h.controller.undo(); // m1's state goes to redo; current is m0 again
+      expect(h.controller.isMaskReferenced('m1'), isTrue, reason: 'in redo');
+      expect(h.controller.isMaskReferenced('m0'), isTrue, reason: 'current');
+    });
+
+    test('a mask shared by another frame is never orphaned', () {
+      final h = harness(
+        const StickerProject(
+          id: 'p',
+          name: 'P',
+          frames: [
+            Frame(
+              id: 'f0',
+              layers: [
+                ImageLayer(
+                  id: 'a',
+                  name: 'A',
+                  assetPath: 'p.png',
+                  maskPath: 'shared',
+                ),
+              ],
+            ),
+            Frame(
+              id: 'f1',
+              layers: [
+                ImageLayer(
+                  id: 'b',
+                  name: 'B',
+                  assetPath: 'p.png',
+                  maskPath: 'shared',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+      // Re-cut the current frame's layer; the duplicate frame still points at
+      // 'shared', so it must remain referenced (deleting it would break f1).
+      h.controller.setImageMask('a', 'fresh');
+      expect(h.controller.isMaskReferenced('shared'), isTrue);
+      expect(h.controller.isMaskReferenced('fresh'), isTrue);
+    });
+
+    test('a mask past undo reach is no longer referenced (undo cap = 50)', () {
+      final h = harness(oneImageProject());
+      // 52 distinct mask commits (each a fresh, non-coalesced undo step) push
+      // the earliest two out of the 50-deep history.
+      for (var i = 0; i < 52; i++) {
+        h.controller.setImageMask('img', 'p$i');
+      }
+      // Current + the 50 retained undo snapshots (p1..p50) stay referenced…
+      expect(h.controller.isMaskReferenced('p51'), isTrue, reason: 'current');
+      expect(
+        h.controller.isMaskReferenced('p50'),
+        isTrue,
+        reason: 'newest undo',
+      );
+      expect(
+        h.controller.isMaskReferenced('p1'),
+        isTrue,
+        reason: 'oldest undo',
+      );
+      // …while the evicted earliest masks are provably unreachable.
+      expect(
+        h.controller.isMaskReferenced('p0'),
+        isFalse,
+        reason: 'past reach',
+      );
+    });
+  });
 }

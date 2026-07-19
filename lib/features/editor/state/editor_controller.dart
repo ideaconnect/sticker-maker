@@ -479,6 +479,21 @@ class EditorController extends Notifier<EditorState> {
   }
 
   void rename(String name) => _commit(state.project.copyWith(name: name));
+
+  /// True when [maskPath] is still reachable — referenced by the live document
+  /// or by any undo/redo snapshot. A superseded mask PNG may be deleted only
+  /// while this is false, so an undo/redo can never surface a missing mask
+  /// (drives the delete-on-supersede GC in the editor, #review perf 2026-07-19).
+  bool isMaskReferenced(String maskPath) {
+    bool inProject(StickerProject project) => project.frames.any(
+      (frame) => frame.layers.any(
+        (layer) => layer is ImageLayer && layer.maskPath == maskPath,
+      ),
+    );
+    return inProject(state.project) ||
+        _undoStack.any(inProject) ||
+        _redoStack.any(inProject);
+  }
 }
 
 /// Editor state for the active document. Override in tests / the editor route

@@ -24,6 +24,27 @@ class StickerCanvas extends StatelessWidget {
 
   final Frame frame;
 
+  /// Cached `File.existsSync` results keyed by absolute path. A path's on-disk
+  /// presence is stable for a layer's lifetime — asset paths are written once at
+  /// import, and mask paths are freshly timestamped on every cut-out / erase —
+  /// so re-stat-ing per image layer AND per mask on every rebuild (i.e. per
+  /// pointer-move frame during a drag) is pure syscall waste (#review perf,
+  /// 2026-07-19). Shared statically so frame thumbnails reusing an asset stat it
+  /// once between them.
+  @visibleForTesting
+  static final Map<String, bool> existsCache = <String, bool>{};
+
+  /// The filesystem probe behind [existsCache]. Swappable in tests to count /
+  /// stub stat calls; production always uses [defaultFileExists].
+  @visibleForTesting
+  static bool Function(String path) fileExists = defaultFileExists;
+
+  static bool defaultFileExists(String path) => File(path).existsSync();
+
+  /// Cached existence check — stats a given [path] at most once.
+  static bool _exists(String path) =>
+      existsCache.putIfAbsent(path, () => fileExists(path));
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -84,7 +105,9 @@ class StickerCanvas extends StatelessWidget {
     final file = File(layer.assetPath);
     // Show the placeholder synchronously for a missing asset (e.g. the demo /
     // gallery fixtures, or a deleted file) instead of flashing an error frame.
-    if (!file.existsSync()) {
+    // Existence is cached per path (see [existsCache]) — the path only changes
+    // when the layer's asset changes, so a drag doesn't re-stat every frame.
+    if (!_exists(layer.assetPath)) {
       return _ImagePlaceholder(name: layer.name, side: 180 * scale);
     }
     final base = 440.0 * scale; // ~0.86 of the canvas; user scale applied above
@@ -104,7 +127,7 @@ class StickerCanvas extends StatelessWidget {
     // removed). The mask file may be absent (e.g. a project opened without its
     // assets) — fall back to the plain photo in that case.
     final maskPath = layer.maskPath;
-    if (maskPath != null && File(maskPath).existsSync()) {
+    if (maskPath != null && _exists(maskPath)) {
       return _MaskedImage(
         imagePath: layer.assetPath,
         maskPath: maskPath,

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -45,6 +46,21 @@ class MaskStore {
   Future<AlphaMask> load(String path) async =>
       decodeAlpha(await File(path).readAsBytes());
 
+  /// Best-effort deletion of a superseded mask PNG previously written by [save].
+  /// A missing or locked file is ignored — the cold-launch orphan sweep
+  /// ([ProjectRepository.sweepOrphanAssets]) remains the backstop. Callers MUST
+  /// have established that [path] is no longer reachable by undo/redo, so a
+  /// restored history state can never surface a now-missing mask.
+  Future<void> deleteMask(String path) async {
+    try {
+      final file = File(path);
+      if (file.existsSync()) await file.delete();
+    } catch (_) {
+      // Locked / already-gone (e.g. a Windows file handle still open); the next
+      // sweep retries.
+    }
+  }
+
   /// Decodes mask PNG [bytes] into an [AlphaMask].
   static Future<AlphaMask> decodeAlpha(Uint8List bytes) async {
     final codec = await ui.instantiateImageCodec(bytes);
@@ -64,15 +80,20 @@ class MaskStore {
     return AlphaMask(width: w, height: h, alpha: alpha);
   }
 
-  /// Decodes just the pixel dimensions of the image at [path].
+  /// Decodes just the pixel dimensions of the image at [path] from its encoded
+  /// header — no full-bitmap decode. A `getNextFrame` decode of a 2048² source
+  /// would otherwise allocate ~16 MB just to read two ints; this reads only the
+  /// header via [ui.ImageDescriptor], mirroring `EditorCanvas._loadDims`.
   static Future<ui.Size> decodeImageSize(String path) async {
     final bytes = await File(path).readAsBytes();
-    final codec = await ui.instantiateImageCodec(bytes);
-    final frame = await codec.getNextFrame();
-    final image = frame.image;
-    final size = ui.Size(image.width.toDouble(), image.height.toDouble());
-    image.dispose();
-    codec.dispose();
+    final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+    final descriptor = await ui.ImageDescriptor.encoded(buffer);
+    buffer.dispose();
+    final size = ui.Size(
+      descriptor.width.toDouble(),
+      descriptor.height.toDouble(),
+    );
+    descriptor.dispose();
     return size;
   }
 
@@ -103,6 +124,48 @@ class MaskStore {
       throw StateError('failed to encode mask PNG');
     }
     return data.buffer.asUint8List();
+  }
+}
+
+/// Garbage-collects mask PNGs that a newer mask has superseded on a layer.
+///
+/// Every erase stroke / removal / cut-out writes a fresh timestamped
+/// `mask_<id>_<stamp>.png` and points the layer at it; the previous file is then
+/// only reachable through undo/redo history. This collector remembers those
+/// superseded paths and, on demand, deletes each one that is no longer reachable
+/// per a caller-supplied `isReferenced` predicate — so intermediate masks don't
+/// pile up as orphans while a live undo entry can still restore them (#review
+/// perf, 2026-07-19).
+class SupersededMaskCollector {
+  SupersededMaskCollector(this._store);
+
+  final MaskStore _store;
+  final Set<String> _pending = <String>{};
+
+  /// Paths awaiting deletion (still undo/redo-reachable). Exposed for tests.
+  @visibleForTesting
+  Set<String> get pending => _pending;
+
+  /// Records that [previous] was replaced by [current] on a layer. A null or
+  /// unchanged previous path is ignored (nothing to reclaim).
+  void supersede(String? previous, String current) {
+    if (previous == null || previous == current) return;
+    _pending.add(previous);
+  }
+
+  /// Deletes every pending path for which [isReferenced] returns false, then
+  /// forgets it. Cheap to call often (e.g. on every editor state change): a
+  /// no-op while nothing is pending, and a path that is still reachable simply
+  /// stays queued for a later pass. Iterates a snapshot so a re-entrant call (or
+  /// a [supersede]) during the `await` can't concurrently mutate the live set;
+  /// [MaskStore.deleteMask] is idempotent, so a duplicated delete is harmless.
+  Future<void> collect(bool Function(String path) isReferenced) async {
+    if (_pending.isEmpty) return;
+    for (final path in _pending.toList()) {
+      if (isReferenced(path)) continue;
+      await _store.deleteMask(path);
+      _pending.remove(path);
+    }
   }
 }
 
