@@ -9,6 +9,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/responsive_center.dart';
 import '../export/compliance_validator.dart';
+import '../home/project_repository.dart';
 import 'pack_dialogs.dart';
 import 'pack_repository.dart';
 import 'sticker_pack.dart';
@@ -36,6 +37,15 @@ class PacksScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final packsAsync = ref.watch(savedPacksProvider);
+    // Known project ids let the Ready badge catch dangling references (a pack
+    // member whose project was deleted). Null while projects are still
+    // loading, which skips that check rather than flagging everything.
+    final knownProjectIds = ref
+        .watch(savedProjectsProvider)
+        .asData
+        ?.value
+        .map((p) => p.id)
+        .toSet();
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -72,6 +82,7 @@ class PacksScreen extends ConsumerWidget {
                                 for (final p in packs) ...[
                                   _PackRow(
                                     pack: p,
+                                    knownProjectIds: knownProjectIds,
                                     onTap: () => context.pushNamed(
                                       Routes.packDetail,
                                       pathParameters: {'id': p.id},
@@ -197,17 +208,28 @@ class _NewPackCard extends StatelessWidget {
 }
 
 class _PackRow extends StatelessWidget {
-  const _PackRow({required this.pack, required this.onTap});
+  const _PackRow({
+    required this.pack,
+    required this.onTap,
+    this.knownProjectIds,
+  });
 
   final StickerPack pack;
   final VoidCallback onTap;
 
+  /// Ids of every saved project, or null while they're loading.
+  final Set<String>? knownProjectIds;
+
   @override
   Widget build(BuildContext context) {
     // A pack is share-ready when it has no blocking WhatsApp issues.
-    final ready = pack.validate().every(
-      (i) => i.severity != IssueSeverity.error,
-    );
+    final ready = pack
+        .validate(knownProjectIds: knownProjectIds)
+        .every((i) => i.severity != IssueSeverity.error);
+    // A pack with dangling references is broken, not merely a draft.
+    final broken =
+        knownProjectIds != null &&
+        pack.missingProjectCount(knownProjectIds!) > 0;
     final accent = pack.animated ? AppColors.orange : AppColors.cyan;
     return Material(
       type: MaterialType.transparency,
@@ -267,7 +289,7 @@ class _PackRow extends StatelessWidget {
                   ],
                 ),
               ),
-              _StatusDot(ready: ready),
+              _StatusDot(ready: ready, broken: broken),
               const SizedBox(width: 8),
               const Icon(
                 Icons.chevron_right,
@@ -283,13 +305,19 @@ class _PackRow extends StatelessWidget {
 }
 
 class _StatusDot extends StatelessWidget {
-  const _StatusDot({required this.ready});
+  const _StatusDot({required this.ready, this.broken = false});
 
   final bool ready;
 
+  /// True when the pack references a project that no longer exists — worth a
+  /// stronger label than "Draft" so the user knows to open the pack and fix it.
+  final bool broken;
+
   @override
   Widget build(BuildContext context) {
-    final color = ready ? AppColors.green : AppColors.amber;
+    final color = ready
+        ? AppColors.green
+        : (broken ? AppColors.rose : AppColors.amber);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
@@ -297,7 +325,7 @@ class _StatusDot extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        ready ? 'Ready' : 'Draft',
+        ready ? 'Ready' : (broken ? 'Not ready' : 'Draft'),
         style: TextStyle(
           fontFamily: AppFonts.ui,
           fontSize: 10.5,

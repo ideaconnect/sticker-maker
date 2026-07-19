@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sticker_maker/features/export/compliance_validator.dart';
 import 'package:sticker_maker/features/packs/pack_repository.dart';
 import 'package:sticker_maker/features/packs/sticker_pack.dart';
 
@@ -62,6 +63,66 @@ void main() {
         stickers: [_sticker('a'), _sticker('b'), _sticker('c')],
       );
       expect(pack.validate(), isEmpty);
+    });
+
+    test('a dangling projectId validates with an error → not ready', () {
+      final pack = _pack(
+        stickers: [_sticker('a'), _sticker('b'), _sticker('c')],
+      );
+      // 'p_c' was deleted: only a and b still resolve.
+      final issues = pack.validate(knownProjectIds: {'p_a', 'p_b'});
+      final missing = issues
+          .where((i) => i.message.contains('missing its source project'))
+          .toList();
+      expect(missing, hasLength(1));
+      expect(missing.single.severity, IssueSeverity.error);
+      expect(missing.single.message, contains('1 sticker'));
+      expect(
+        issues.every((i) => i.severity != IssueSeverity.error),
+        isFalse,
+        reason: 'a broken pack must not count as ready',
+      );
+    });
+
+    test('several dangling projectIds are counted in one plural issue', () {
+      final pack = _pack(
+        stickers: [_sticker('a'), _sticker('b'), _sticker('c')],
+      );
+      final issues = pack.validate(knownProjectIds: {'p_a'});
+      final missing = issues
+          .where((i) => i.message.contains('missing their source project'))
+          .toList();
+      expect(missing, hasLength(1));
+      expect(missing.single.message, contains('2 stickers'));
+    });
+
+    test('knownProjectIds covering every sticker adds no issue', () {
+      final pack = _pack(
+        stickers: [_sticker('a'), _sticker('b'), _sticker('c')],
+      );
+      expect(pack.validate(knownProjectIds: {'p_a', 'p_b', 'p_c'}), isEmpty);
+    });
+
+    test('no-arg validate() keeps the historical behavior', () {
+      // Same dangling pack, but the caller can't resolve projects: the
+      // missing-project check is skipped rather than flagging everything.
+      final pack = _pack(
+        stickers: [_sticker('a'), _sticker('b'), _sticker('c')],
+      );
+      expect(pack.validate(), isEmpty);
+    });
+
+    test('withoutProject removes every slot referencing the project', () {
+      final pack = _pack(
+        stickers: [_sticker('a'), _sticker('b'), _sticker('c')],
+      );
+      final next = pack.withoutProject('p_b');
+      expect(next.stickers.map((s) => s.projectId), ['p_a', 'p_c']);
+      expect(
+        pack.withoutProject('p_unknown').stickers,
+        pack.stickers,
+        reason: 'removing an absent project is a no-op',
+      );
     });
   });
 

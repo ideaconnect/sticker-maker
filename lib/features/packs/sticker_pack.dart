@@ -101,6 +101,12 @@ class StickerPack {
   StickerPack withoutSticker(String stickerId) =>
       copyWith(stickers: stickers.where((s) => s.id != stickerId).toList());
 
+  /// Removes every slot that references [projectId] (used when the source
+  /// project is deleted, so packs never keep dangling references).
+  StickerPack withoutProject(String projectId) => copyWith(
+    stickers: stickers.where((s) => s.projectId != projectId).toList(),
+  );
+
   StickerPack reorder(int oldIndex, int newIndex) {
     final next = [...stickers];
     final item = next.removeAt(oldIndex);
@@ -118,8 +124,15 @@ class StickerPack {
   /// Model-level compliance issues (pack size, and — for WhatsApp — that every
   /// sticker carries 1–3 emoji tags). Byte/dimension checks happen at encode
   /// time via [ComplianceValidator.validateSticker].
+  ///
+  /// Pass [knownProjectIds] (the ids of every saved project) to also flag
+  /// stickers whose source project no longer exists — an error, because the
+  /// exporters would silently skip them and ship a short pack. When it is
+  /// null (caller can't resolve projects yet), that check is skipped and the
+  /// result matches the historical no-arg behavior.
   List<ComplianceIssue> validate({
     StickerTarget target = StickerTarget.whatsapp,
+    Set<String>? knownProjectIds,
   }) {
     final issues = ComplianceValidator.validatePack(
       stickerCount: count,
@@ -127,6 +140,20 @@ class StickerPack {
       hasAnimated: animated,
       target: target,
     );
+    if (knownProjectIds != null) {
+      final missing = missingProjectCount(knownProjectIds);
+      if (missing > 0) {
+        issues.add(
+          ComplianceIssue(
+            missing == 1
+                ? '1 sticker is missing its source project — remove its slot '
+                      'or recreate the sticker.'
+                : '$missing stickers are missing their source project — '
+                      'remove their slots or recreate the stickers.',
+          ),
+        );
+      }
+    }
     if (target == StickerTarget.whatsapp) {
       final untagged = stickers
           .where((s) => s.emojis.isEmpty || s.emojis.length > 3)
@@ -141,6 +168,10 @@ class StickerPack {
     }
     return issues;
   }
+
+  /// How many stickers reference a project that is not in [knownProjectIds].
+  int missingProjectCount(Set<String> knownProjectIds) =>
+      stickers.where((s) => !knownProjectIds.contains(s.projectId)).length;
 
   Map<String, dynamic> toJson() => {
     'schemaVersion': 1,
