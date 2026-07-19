@@ -20,6 +20,7 @@ import '../../core/theme/sm_tokens.dart';
 import '../../core/widgets/checkerboard.dart';
 import '../../core/widgets/gradient_button.dart';
 import '../../core/widgets/labeled_slider.dart';
+import '../../core/widgets/name_prompt.dart';
 import '../../core/widgets/pill_chip.dart';
 import '../../core/widgets/sm_toast.dart';
 import '../../core/widgets/tool_tab.dart';
@@ -204,6 +205,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                   onExport: () => context.pushNamed(Routes.export),
                   onUndo: _controller.undo,
                   onRedo: _controller.redo,
+                  onRename: _renameProject,
                 ),
                 Expanded(child: _canvas(editor)),
                 _panel(editor, panelMax),
@@ -1691,6 +1693,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                 onRename: () => _showRenameDialog(layer),
                 onToggleVisibility: () =>
                     _controller.toggleVisibility(layer.id),
+                onDuplicate: () => _controller.duplicateLayer(layer.id),
                 onDelete: () => _controller.removeLayer(layer.id),
               );
             },
@@ -1846,6 +1849,19 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     }
   }
 
+  /// Tap-the-title project rename (mirrors PackDetailScreen). A blank or
+  /// cancelled dialog keeps the old name; the controller guards empty too.
+  Future<void> _renameProject() async {
+    final name = await promptName(
+      context,
+      title: 'Rename sticker',
+      initial: ref.read(editorControllerProvider).project.name,
+      hint: 'Sticker name',
+    );
+    if (name == null) return;
+    _controller.rename(name);
+  }
+
   Widget _segTab(String label, bool active, Color accent, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -1898,6 +1914,7 @@ class _LayerRow extends StatelessWidget {
     required this.onSelect,
     required this.onRename,
     required this.onToggleVisibility,
+    required this.onDuplicate,
     required this.onDelete,
   });
 
@@ -1906,6 +1923,7 @@ class _LayerRow extends StatelessWidget {
   final VoidCallback onSelect;
   final VoidCallback onRename;
   final VoidCallback onToggleVisibility;
+  final VoidCallback onDuplicate;
   final VoidCallback onDelete;
 
   /// A 38px preview of the photo (decoded small via [cacheWidth], never at
@@ -2040,6 +2058,16 @@ class _LayerRow extends StatelessWidget {
                     color: layer.visible
                         ? AppColors.textSecondary
                         : AppColors.textFaint,
+                  ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Duplicate layer',
+                  onPressed: onDuplicate,
+                  icon: const Icon(
+                    Icons.content_copy,
+                    size: 16,
+                    color: AppColors.textMuted,
                   ),
                 ),
                 IconButton(
@@ -2249,6 +2277,7 @@ class _TopBar extends StatelessWidget {
     required this.onExport,
     required this.onUndo,
     required this.onRedo,
+    required this.onRename,
   });
 
   final String title;
@@ -2258,6 +2287,7 @@ class _TopBar extends StatelessWidget {
   final VoidCallback onExport;
   final VoidCallback onUndo;
   final VoidCallback onRedo;
+  final VoidCallback onRename;
 
   @override
   Widget build(BuildContext context) {
@@ -2277,15 +2307,34 @@ class _TopBar extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: AppFonts.display,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                    color: AppColors.textPrimary,
+                // Tap the title to rename the project (mirrors the pack
+                // detail screen's tap-title-to-rename affordance).
+                GestureDetector(
+                  onTap: onRename,
+                  behavior: HitTestBehavior.opaque,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: AppFonts.display,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      const Icon(
+                        Icons.edit_outlined,
+                        size: 13,
+                        color: AppColors.textMuted,
+                      ),
+                    ],
                   ),
                 ),
                 const Text(

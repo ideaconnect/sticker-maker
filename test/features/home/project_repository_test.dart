@@ -234,4 +234,109 @@ void main() {
       },
     );
   });
+
+  group('duplicate', () {
+    StickerProject source() => StickerProject(
+      id: 'src',
+      name: 'Rex',
+      currentFrameIndex: 1,
+      createdAt: DateTime.utc(2026),
+      updatedAt: DateTime.utc(2026),
+      frames: const [
+        Frame(
+          id: 'src_f0',
+          layers: [
+            ImageLayer(
+              id: 'src_l0',
+              name: 'Photo',
+              assetPath: '/assets/img_1.png',
+              maskPath: '/assets/mask_1.png',
+            ),
+            TextLayer(id: 'src_l1', name: 'Cap', text: 'Hi', fontFamily: 'R'),
+          ],
+        ),
+        Frame(
+          id: 'src_f1',
+          layers: [
+            ImageLayer(
+              id: 'src_l2',
+              name: 'Photo',
+              assetPath: '/assets/img_1.png',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    Set<String> layerIds(StickerProject p) => {
+      for (final f in p.frames) ...f.layers.map((l) => l.id),
+    };
+
+    test('saves a deep copy with fresh ids sharing asset paths', () async {
+      await repo.save(source());
+      final copy = await repo.duplicate('src');
+
+      expect(copy, isNotNull);
+      expect(copy!.name, 'Rex copy');
+      expect(copy.id, isNot('src'));
+      expect(copy.currentFrameIndex, 1);
+
+      // Fresh ids for every frame and layer, none shared with the source.
+      final frameIds = copy.frames.map((f) => f.id).toSet();
+      expect(frameIds, hasLength(2));
+      expect(frameIds.intersection({'src_f0', 'src_f1'}), isEmpty);
+      expect(layerIds(copy), hasLength(3));
+      expect(layerIds(copy).intersection(layerIds(source())), isEmpty);
+
+      // Asset/mask files are shared, not copied.
+      final img = copy.frames.first.layers.first as ImageLayer;
+      expect(img.assetPath, '/assets/img_1.png');
+      expect(img.maskPath, '/assets/mask_1.png');
+
+      // The copy is persisted alongside the source.
+      final loaded = await repo.load(copy.id);
+      expect(loaded, isNotNull);
+      expect(loaded!.name, 'Rex copy');
+      expect((await repo.list()).map((p) => p.id), contains('src'));
+    });
+
+    test('returns null for a missing project', () async {
+      expect(await repo.duplicate('nope'), isNull);
+    });
+
+    test(
+      'shared asset survives deleting one twin, dies with the last',
+      () async {
+        final assets = Directory('${dir.path}/projects/assets')
+          ..createSync(recursive: true);
+        final img = File('${assets.path}/img_1.png')
+          ..writeAsBytesSync(const [1, 2, 3]);
+        img.setLastModifiedSync(
+          DateTime.now().subtract(const Duration(hours: 1)),
+        );
+        final withAsset = source().copyWith(
+          frames: [
+            Frame(
+              id: 'src_f0',
+              layers: [
+                ImageLayer(
+                  id: 'src_l0',
+                  name: 'Photo',
+                  assetPath: '${assets.path}/img_1.png',
+                ),
+              ],
+            ),
+          ],
+        );
+        await repo.save(withAsset);
+        final copy = await repo.duplicate('src');
+
+        await repo.delete('src'); // sweeps; the copy still references the file
+        expect(img.existsSync(), isTrue);
+
+        await repo.delete(copy!.id);
+        expect(img.existsSync(), isFalse);
+      },
+    );
+  });
 }

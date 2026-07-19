@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:sticker_maker/core/models/frame.dart';
+import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
 import 'package:sticker_maker/core/theme/app_theme.dart';
 import 'package:sticker_maker/features/home/all_projects_screen.dart';
@@ -114,5 +118,158 @@ void main() {
     await _pump(tester, const []);
 
     expect(find.text('No stickers yet'), findsOneWidget);
+  });
+
+  group('tile long-press menu (repository-backed)', () {
+    late Directory dir;
+    late ProjectRepository repo;
+
+    setUp(() {
+      dir = Directory.systemTemp.createTempSync('sm_allproj_');
+      repo = ProjectRepository(baseDir: dir);
+    });
+    tearDown(() {
+      imageCache.clear();
+      imageCache.clearLiveImages();
+      try {
+        if (dir.existsSync()) dir.deleteSync(recursive: true);
+      } catch (_) {
+        // Windows can briefly keep decoded-file handles open.
+      }
+    });
+
+    /// Real repository IO inside a widget test: interleave real-async windows
+    /// with clock-advancing pumps so file reads/writes, image decodes, and
+    /// scheduled provider refreshes can all complete.
+    Future<void> settleIO(WidgetTester tester) async {
+      for (var i = 0; i < 40; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> pumpWithRepo(WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [projectRepositoryProvider.overrideWithValue(repo)],
+          child: MaterialApp(
+            theme: buildStickerTheme(),
+            home: const AllProjectsScreen(),
+          ),
+        ),
+      );
+      await settleIO(tester);
+    }
+
+    /// Saves 'Happy Dog' with one image layer pointing at a real tiny PNG in
+    /// the repository's assets dir.
+    Future<void> seed(WidgetTester tester) {
+      final asset = File('${dir.path}/projects/assets/img_1.png');
+      return tester.runAsync(() async {
+        asset.parent.createSync(recursive: true);
+        asset.writeAsBytesSync(img.encodePng(img.Image(width: 4, height: 4)));
+        await repo.save(
+          StickerProject(
+            id: 'src',
+            name: 'Happy Dog',
+            createdAt: DateTime.utc(2026),
+            updatedAt: DateTime.utc(2026),
+            frames: [
+              Frame(
+                id: 'src_f0',
+                layers: [
+                  ImageLayer(
+                    id: 'src_l0',
+                    name: 'Photo',
+                    assetPath: asset.path,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      });
+    }
+
+    testWidgets('Duplicate saves a fresh-id copy sharing asset paths', (
+      tester,
+    ) async {
+      await seed(tester);
+      await pumpWithRepo(tester);
+      expect(find.text('Happy Dog'), findsOneWidget);
+
+      await tester.longPress(find.text('Happy Dog'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Duplicate'));
+      await settleIO(tester);
+
+      expect(find.text('Happy Dog copy'), findsOneWidget);
+
+      final all = (await tester.runAsync(() => repo.list()))!;
+      expect(all, hasLength(2));
+      final src = all.firstWhere((p) => p.name == 'Happy Dog');
+      final copy = all.firstWhere((p) => p.name == 'Happy Dog copy');
+      expect(copy.id, isNot(src.id));
+      expect(copy.frames.single.id, isNot(src.frames.single.id));
+      final srcImg = src.frames.single.layers.single as ImageLayer;
+      final copyImg = copy.frames.single.layers.single as ImageLayer;
+      expect(copyImg.id, isNot(srcImg.id));
+      expect(
+        copyImg.assetPath,
+        srcImg.assetPath,
+        reason: 'asset bytes are shared, never re-copied',
+      );
+    });
+
+    testWidgets('Rename persists the new name via the repository', (
+      tester,
+    ) async {
+      await seed(tester);
+      await pumpWithRepo(tester);
+
+      await tester.longPress(find.text('Happy Dog'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rename'));
+      await tester.pumpAndSettle();
+      expect(find.text('Rename sticker'), findsOneWidget);
+
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TextField),
+        ),
+        'Grumpy Cat',
+      );
+      await tester.tap(find.text('Save'));
+      await settleIO(tester);
+
+      expect(find.text('Grumpy Cat'), findsOneWidget);
+      expect(find.text('Happy Dog'), findsNothing);
+
+      final loaded = await tester.runAsync(() => repo.load('src'));
+      expect(loaded!.name, 'Grumpy Cat');
+    });
+
+    testWidgets('Delete keeps its confirmation and removes the project', (
+      tester,
+    ) async {
+      await seed(tester);
+      await pumpWithRepo(tester);
+
+      await tester.longPress(find.text('Happy Dog'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete "Happy Dog"?'), findsOneWidget);
+
+      await tester.tap(find.text('Delete').last);
+      await settleIO(tester);
+
+      expect(find.text('Happy Dog'), findsNothing);
+      expect(await tester.runAsync(() => repo.load('src')), isNull);
+    });
   });
 }

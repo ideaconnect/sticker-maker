@@ -144,6 +144,63 @@ void main() {
     expect(find.text('Caption'), findsNothing);
   });
 
+  testWidgets('tapping the title opens the rename dialog and renames', (
+    tester,
+  ) async {
+    await pumpEditor(tester, project: oneTextProject());
+
+    await tester.tap(find.text('Test')); // top-bar title
+    await tester.pumpAndSettle();
+    expect(find.text('Rename sticker'), findsOneWidget);
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      'Doggo',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rename sticker'), findsNothing);
+    expect(find.text('Doggo'), findsOneWidget);
+    expect(find.text('Test'), findsNothing);
+  });
+
+  testWidgets('a blank rename keeps the old project name', (tester) async {
+    await pumpEditor(tester, project: oneTextProject());
+
+    await tester.tap(find.text('Test'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      '   ',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Test'), findsOneWidget);
+  });
+
+  testWidgets('the layer row duplicate button clones the layer', (
+    tester,
+  ) async {
+    await pumpEditor(tester, project: oneTextProject());
+    await tester.tap(find.text('Layers'));
+    await tester.pumpAndSettle();
+    expect(find.text('Text layer'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.content_copy));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Text layer'), findsNWidgets(2));
+    expect(find.text('Caption'), findsNWidgets(2));
+  });
+
   testWidgets('undo button enables after an edit and reverses it', (
     tester,
   ) async {
