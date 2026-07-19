@@ -119,11 +119,25 @@ Future<void> selectPhotoAndOpenCutout(WidgetTester tester) async {
 
 /// The Cut out panel scrolls (model picker above the CTA), so the button can sit
 /// below the fold — bring it into view before tapping, as a user would.
+///
+/// The cut-out pipeline now hops mask work to helper isolates ([Isolate.run]),
+/// which fake-async pumping can't drive: interleave real-async windows (the
+/// isolate replies arrive on the real event loop) with pumps (fake-zone
+/// microtasks flush) until the busy spinner is gone — the same pattern as
+/// editor_canvas_test.dart. Harmless for taps that do no isolate work (the
+/// "Working…" label never appears, so the loop exits on its first pump).
 Future<void> tapPanelCta(WidgetTester tester, String label) async {
   final finder = find.text(label);
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);
+  for (var i = 0; i < 40; i++) {
+    await tester.pump();
+    if (find.text('Working…').evaluate().isEmpty) break;
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 25)),
+    );
+  }
   await tester.pumpAndSettle();
 }
 

@@ -14,6 +14,7 @@ import '../../core/widgets/responsive_center.dart';
 import '../about/about_sheet.dart';
 import '../editor/state/editor_controller.dart';
 import '../templates/template_picker.dart';
+import 'project_delete.dart';
 import 'project_repository.dart';
 import 'widgets/project_tile.dart';
 
@@ -62,10 +63,13 @@ class HomeScreen extends ConsumerWidget {
     context.pushNamed(Routes.editor);
   }
 
-  Future<void> _deleteProject(WidgetRef ref, String id) async {
-    await ref.read(projectRepositoryProvider).delete(id);
-    ref.invalidate(savedProjectsProvider);
-  }
+  /// Confirms (warning about pack membership) and deletes, cascading the
+  /// project's pack slots so no pack keeps a dangling reference.
+  Future<void> _deleteProject(
+    BuildContext context,
+    WidgetRef ref,
+    StickerProject project,
+  ) => confirmAndDeleteProject(context, ref, project);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -161,7 +165,8 @@ class HomeScreen extends ConsumerWidget {
                               project: p,
                               radius: tokens.radiusCard,
                               onTap: () => _openProject(context, ref, p),
-                              onDelete: () => _deleteProject(ref, p.id),
+                              onDeleteRequested: () =>
+                                  _deleteProject(context, ref, p),
                             ),
                         ],
                       ),
