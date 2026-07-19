@@ -7,6 +7,7 @@ import '../../../core/models/frame.dart';
 import '../../../core/models/layer.dart';
 import '../../../core/models/sticker_project.dart';
 import '../../../core/rendering/color_matrix.dart';
+import '../../../core/rendering/sticker_geometry.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/widgets/sticker_caption.dart';
@@ -87,7 +88,8 @@ class StickerCanvas extends StatelessWidget {
     if (!file.existsSync()) {
       return _ImagePlaceholder(name: layer.name, side: 180 * scale);
     }
-    final base = 440.0 * scale; // ~0.86 of the canvas; user scale applied above
+    final base =
+        kStickerFitBoxSide * scale; // ~0.86 of the canvas; user scale above
     // Decode only the pixels this box (and the layer's own zoom) can show —
     // full-res decodes of 2048² sources per widget instance were the top OOM
     // risk with several photos × frame thumbnails (#75).
