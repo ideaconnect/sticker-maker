@@ -43,6 +43,31 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+
+        }
+    }
+}
+
+// Release builds ship only real-device ABIs (arm64-v8a, armeabi-v7a). Every
+// ABI carries ~60-76 MiB of native code (ONNX Runtime + the ffmpeg libav*
+// family), and x86_64 is emulator-only — shipping it fattened the universal
+// APK to 243 MB (docs/reviews/2026-07-19-review.md, "243 MB fat release APK").
+//
+// This uses the variant packaging API because buildType-level ndk.abiFilters
+// is silently clobbered under the Flutter Gradle plugin — verified
+// empirically: with the filter set, the universal release APK still packaged
+// lib/x86_64 byte-for-byte. Scoped to release variants so debug builds keep
+// all ABIs and x86_64 emulators work unchanged.
+//
+// Skipped when the Flutter tool requests `--split-per-abi` so the x86_64
+// split APK (a never-distributed byproduct, see
+// docs/release/building-releases.md) stays a valid artifact.
+val isSplitPerAbiBuild =
+    project.findProperty("split-per-abi")?.toString()?.toBoolean() ?: false
+if (!isSplitPerAbiBuild) {
+    androidComponents {
+        onVariants(selector().withBuildType("release")) { variant ->
+            variant.packaging.jniLibs.excludes.add("**/x86_64/**")
         }
     }
 }
