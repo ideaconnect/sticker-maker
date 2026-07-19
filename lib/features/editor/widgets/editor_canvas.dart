@@ -28,6 +28,7 @@ class EditorCanvas extends ConsumerStatefulWidget {
     required this.onEmptyTap,
     required this.dropPlaceholder,
     this.onEraseStroke,
+    this.onObjectTap,
     this.onionFrame,
   });
 
@@ -43,6 +44,11 @@ class EditorCanvas extends ConsumerStatefulWidget {
   /// Called with a brush stroke (points in 512-logical canvas units) when the
   /// Erase tool is active over the selected image layer.
   final void Function(List<Offset> pointsLogical)? onEraseStroke;
+
+  /// When non-null and the Cut-out tool is active over the selected image
+  /// layer, a tap becomes "remove the object under the finger" (#83) instead
+  /// of layer selection. Point in 512-logical canvas units.
+  final void Function(Offset pointLogical)? onObjectTap;
 
   @override
   ConsumerState<EditorCanvas> createState() => _EditorCanvasState();
@@ -235,6 +241,13 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
     // Erase tool: a tap lays down a single dab on the selected photo.
     if (_isErasing(editor)) {
       widget.onEraseStroke?.call([pointLogical]);
+      return;
+    }
+    // Cut-out tool in Remove-object mode: the tap picks an object (#83).
+    if (widget.onObjectTap != null &&
+        editor.tool == EditorTool.cutout &&
+        editor.selectedLayer is ImageLayer) {
+      widget.onObjectTap!(pointLogical);
       return;
     }
     if (editor.layers.isEmpty) {

@@ -65,6 +65,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   bool _softEdges = true;
   double _brushSize = 40;
   bool _removingBg = false; // AI cut-out in progress
+  bool _removeObjectMode = false; // tap-to-remove mode in the cutout tool (#83)
 
   // Working mask cached across strokes of the Erase tool, so we don't reload
   // and decode the mask file on every dab. Keyed by (layerId, maskPath) so an
@@ -229,6 +230,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                       onEmptyTap: () => _pickPhoto(ImageSource.gallery),
                       dropPlaceholder: const DropPlaceholder(),
                       onEraseStroke: _applyEraseStroke,
+                      // Non-null only while the cutout tool's Remove-object
+                      // mode is armed (#83).
+                      onObjectTap: _removeObjectMode
+                          ? _applyObjectRemoval
+                          : null,
                       onionFrame: _onionFrame(editor),
                     ),
                     if (_hasCutout(editor)) const _CutBadge(),
@@ -822,6 +828,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         ? 'Working…'
         : (removed ? 'Undo removal' : 'Remove background');
     final model = ref.watch(segModelProvider).asData?.value ?? SegModel.builtin;
+    final removeMode = _removeObjectMode && removed;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -838,33 +845,67 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             ),
           ),
         ),
-        _emptyHint(
-          image == null
-              ? 'Select a photo layer to cut out.'
-              : "One tap to isolate your subject. We'll auto-detect the edges — "
-                    'refine anything by hand in the Erase tool.',
-        ),
-        _modelPicker(model),
-        const SizedBox(height: 16),
-        GradientButton(
-          label: label,
-          icon: Icons.auto_awesome,
-          busy: _removingBg,
-          gradient: removed ? null : context.sm.cutoutGradient,
-          solidColor: removed ? AppColors.neutralButton : null,
-          foreground: removed ? AppColors.textSecondary : AppColors.cutoutInk,
-          glowColor: AppColors.green,
-          onPressed: image == null
-              ? null
-              : () {
-                  if (removed) {
-                    _controller.setImageMask(image.id, null);
-                    _toast('Background restored');
-                  } else {
-                    _removeBackground(image);
-                  }
-                },
-        ),
+        // Once a cutout exists, a second mode removes leftover objects by
+        // tapping them on the canvas (#83).
+        if (removed) ...[
+          Row(
+            children: [
+              Expanded(
+                child: _segTab(
+                  'Background',
+                  !removeMode,
+                  AppColors.green,
+                  () => setState(() => _removeObjectMode = false),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _segTab(
+                  'Remove object',
+                  removeMode,
+                  AppColors.rose,
+                  () => setState(() => _removeObjectMode = true),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+        ],
+        if (removeMode) ...[
+          _emptyHint(
+            'Tap an unwanted object on the photo to erase it — a stray '
+            'item, a second subject, clutter. Tapping the main subject is '
+            'safely ignored; undo brings anything back.',
+          ),
+        ] else ...[
+          _emptyHint(
+            image == null
+                ? 'Select a photo layer to cut out.'
+                : "One tap to isolate your subject. We'll auto-detect the "
+                      'edges — refine anything by hand in the Erase tool.',
+          ),
+          _modelPicker(model),
+          const SizedBox(height: 16),
+          GradientButton(
+            label: label,
+            icon: Icons.auto_awesome,
+            busy: _removingBg,
+            gradient: removed ? null : context.sm.cutoutGradient,
+            solidColor: removed ? AppColors.neutralButton : null,
+            foreground: removed ? AppColors.textSecondary : AppColors.cutoutInk,
+            glowColor: AppColors.green,
+            onPressed: image == null
+                ? null
+                : () {
+                    if (removed) {
+                      _controller.setImageMask(image.id, null);
+                      _toast('Background restored');
+                    } else {
+                      _removeBackground(image);
+                    }
+                  },
+          ),
+        ],
       ],
     );
   }
@@ -1150,24 +1191,33 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   /// to the selected photo's alpha mask: map into mask pixels, paint, persist
   /// and apply — undoable per stroke. A working mask is cached across dabs so we
   /// don't decode the mask file every time; it reloads on a layer/mask change.
+  /// Loads (or reuses) the working mask + image size for [layer]. Shared by
+  /// the Erase brush and tap-to-remove (#83); false when the widget unmounted
+  /// mid-load.
+  Future<bool> _ensureWorkingMask(ImageLayer layer) async {
+    if (_workingMask != null &&
+        _workingImageSize != null &&
+        _workingMaskLayerId == layer.id &&
+        _workingMaskPath == layer.maskPath) {
+      return true;
+    }
+    final size = await MaskStore.decodeImageSize(layer.assetPath);
+    final mask = layer.maskPath != null
+        ? await ref.read(maskStoreProvider).load(layer.maskPath!)
+        : AlphaMask.filled(size.width.round(), size.height.round(), 255);
+    if (!mounted) return false;
+    _workingImageSize = size;
+    _workingMask = mask;
+    _workingMaskLayerId = layer.id;
+    _workingMaskPath = layer.maskPath;
+    return true;
+  }
+
   Future<void> _runEraseStroke(List<Offset> pointsLogical) async {
     final layer = ref.read(editorControllerProvider).selectedLayer;
     if (layer is! ImageLayer) return;
     try {
-      if (_workingMask == null ||
-          _workingImageSize == null ||
-          _workingMaskLayerId != layer.id ||
-          _workingMaskPath != layer.maskPath) {
-        final size = await MaskStore.decodeImageSize(layer.assetPath);
-        final mask = layer.maskPath != null
-            ? await ref.read(maskStoreProvider).load(layer.maskPath!)
-            : AlphaMask.filled(size.width.round(), size.height.round(), 255);
-        if (!mounted) return;
-        _workingImageSize = size;
-        _workingMask = mask;
-        _workingMaskLayerId = layer.id;
-        _workingMaskPath = layer.maskPath;
-      }
+      if (!await _ensureWorkingMask(layer)) return;
       final mapper = MaskMapper(
         imageSize: _workingImageSize!,
         position: layer.transform.position,
@@ -1196,6 +1246,58 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       _controller.setImageMask(layer.id, path);
     } catch (_) {
       if (mounted) _toast("Couldn't apply the brush");
+    }
+  }
+
+  /// Enqueues a remove-object tap on the same lock as erase strokes, so a tap
+  /// can't interleave with an in-flight brush apply on the same mask (#83).
+  void _applyObjectRemoval(Offset pointLogical) {
+    _strokeLock = _strokeLock
+        .then((_) => _removeObjectAt(pointLogical))
+        .catchError((Object _) {});
+  }
+
+  /// Tier-1 object removal (#83): the tapped 4-connected blob of the cutout's
+  /// alpha is subtracted (with a feathered seam) — no ML involved. Tapping the
+  /// largest blob (the subject) or transparency is a safe no-op.
+  Future<void> _removeObjectAt(Offset pointLogical) async {
+    final layer = ref.read(editorControllerProvider).selectedLayer;
+    if (layer is! ImageLayer) return;
+    try {
+      if (!await _ensureWorkingMask(layer)) return;
+      final mapper = MaskMapper(
+        imageSize: _workingImageSize!,
+        position: layer.transform.position,
+        layerScale: layer.transform.scale,
+        rotation: layer.transform.rotation,
+      );
+      final maskPoint = mapper.canvasToMask(pointLogical);
+      if (maskPoint == null) return; // missed the photo entirely
+      final result = MaskProcessing.removeObjectAt(
+        _workingMask!,
+        maskPoint.dx.round(),
+        maskPoint.dy.round(),
+      );
+      switch (result.outcome) {
+        case RemoveTapOutcome.miss:
+          if (mounted) _toast('Nothing to remove there');
+        case RemoveTapOutcome.subject:
+          if (mounted) {
+            _toast('That looks like your subject — use Erase for fine edits');
+          }
+        case RemoveTapOutcome.removed:
+          final next = result.mask!;
+          _workingMask = next;
+          final path = await ref
+              .read(maskStoreProvider)
+              .save(next, id: layer.id);
+          if (!mounted) return;
+          _workingMaskPath = path;
+          _controller.setImageMask(layer.id, path);
+          _toast('Object removed — undo brings it back');
+      }
+    } catch (_) {
+      if (mounted) _toast("Couldn't remove that — try again");
     }
   }
 

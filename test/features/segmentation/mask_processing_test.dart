@@ -110,4 +110,70 @@ void main() {
       expect(out.coverage() > 0, isTrue, reason: 'main blob survives');
     });
   });
+
+  group('subtract (#83)', () {
+    test('alpha becomes min(current, 255 − object), soft edges respected', () {
+      final current = maskOf(3, 1, [255, 200, 0]);
+      final object = maskOf(3, 1, [255, 100, 255]);
+      final out = MaskProcessing.subtract(current, object);
+      expect(out.alpha, [0, 155, 0]); // min(200, 255-100) = 155
+    });
+  });
+
+  group('removeObjectAt (#83)', () {
+    // 12x12: a 5x5 subject block top-left, a 3x3 clutter blob bottom-right.
+    AlphaMask scene() {
+      final v = List<int>.filled(144, 0);
+      for (var y = 0; y < 5; y++) {
+        for (var x = 0; x < 5; x++) {
+          v[y * 12 + x] = 255;
+        }
+      }
+      for (var y = 8; y < 11; y++) {
+        for (var x = 8; x < 11; x++) {
+          v[y * 12 + x] = 255;
+        }
+      }
+      return maskOf(12, 12, v);
+    }
+
+    test('tapping the small blob removes it, subject untouched', () {
+      final r = MaskProcessing.removeObjectAt(scene(), 9, 9);
+      expect(r.outcome, RemoveTapOutcome.removed);
+      final out = r.mask!;
+      expect(out.at(9, 9), 0, reason: 'clutter core gone');
+      expect(
+        out.at(8, 8),
+        lessThan(160),
+        reason: 'seam pixels at least halved by the feathered subtract',
+      );
+      expect(out.at(2, 2), 255, reason: 'subject core intact');
+    });
+
+    test('tapping the largest blob is refused (that is the subject)', () {
+      final r = MaskProcessing.removeObjectAt(scene(), 1, 1);
+      expect(r.outcome, RemoveTapOutcome.subject);
+      expect(r.mask, isNull);
+    });
+
+    test('tapping transparency (or out of bounds) is a miss', () {
+      expect(
+        MaskProcessing.removeObjectAt(scene(), 11, 0).outcome,
+        RemoveTapOutcome.miss,
+      );
+      expect(
+        MaskProcessing.removeObjectAt(scene(), -1, 3).outcome,
+        RemoveTapOutcome.miss,
+      );
+      expect(
+        MaskProcessing.removeObjectAt(scene(), 3, 99).outcome,
+        RemoveTapOutcome.miss,
+      );
+    });
+
+    test('a lone blob counts as the subject even without a cutout', () {
+      final r = MaskProcessing.removeObjectAt(AlphaMask.filled(6, 6, 255), 3, 3);
+      expect(r.outcome, RemoveTapOutcome.subject);
+    });
+  });
 }

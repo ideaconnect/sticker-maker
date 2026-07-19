@@ -175,6 +175,29 @@ void main() {
     expect(find.text('Remove background'), findsOneWidget);
   });
 
+  testWidgets('a cutout unlocks the Remove object mode (#83)', (tester) async {
+    await pumpEditorWith(tester, SegmentationRegistry([_AlwaysOnEngine()]));
+    await selectPhotoAndOpenCutout(tester);
+
+    // No mode switch before the cutout exists.
+    expect(find.text('Remove object'), findsNothing);
+
+    await tapPanelCta(tester, 'Remove background');
+    expect(find.text('Remove object'), findsOneWidget);
+
+    // Entering the mode swaps the panel to the tap hint (no model picker).
+    // (tapPanelCta scrolls the tab into view — the panel is still scrolled
+    // down to the CTA from the previous tap.)
+    await tapPanelCta(tester, 'Remove object');
+    expect(find.textContaining('Tap an unwanted object'), findsOneWidget);
+    expect(find.text('AI MODEL'), findsNothing);
+
+    // Back to the background mode restores the picker + CTA.
+    await tapPanelCta(tester, 'Background');
+    expect(find.text('AI MODEL'), findsOneWidget);
+    expect(find.text('Undo removal'), findsOneWidget);
+  });
+
   testWidgets('no available engine leaves the layer uncut (graceful)', (
     tester,
   ) async {

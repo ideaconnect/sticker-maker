@@ -157,4 +157,88 @@ abstract final class MaskProcessing {
     labels[p] = label;
     queue.add(p);
   }
+
+  /// `current − object`: alpha becomes `min(current, 255 − object)`, so a soft
+  /// object edge subtracts softly. NEVER run [process] on the result — its
+  /// keep-largest-component step would eat surviving blobs (#83).
+  static AlphaMask subtract(AlphaMask current, AlphaMask object) {
+    assert(
+      current.width == object.width && current.height == object.height,
+      'mask sizes must match',
+    );
+    final out = Uint8List(current.length);
+    for (var i = 0; i < current.length; i++) {
+      final keep = 255 - object.alpha[i];
+      final a = current.alpha[i];
+      out[i] = a < keep ? a : keep;
+    }
+    return current.copyWith(alpha: out);
+  }
+
+  /// Tier-1 tap-to-remove (#83): the 4-connected opaque component (coverage
+  /// `>= cutoff`) under ([x],[y]) is subtracted from [mask] with a 1-px
+  /// feathered seam. Outcomes:
+  /// - `miss`   — the tap hit transparency (or out of bounds); mask untouched.
+  /// - `subject`— the tapped blob is the LARGEST component: that's the
+  ///   sticker's subject, refuse to nuke it; mask untouched.
+  /// - `removed`— `mask` carries the result.
+  static ({RemoveTapOutcome outcome, AlphaMask? mask}) removeObjectAt(
+    AlphaMask mask,
+    int x,
+    int y, {
+    int cutoff = 16,
+  }) {
+    final w = mask.width;
+    final h = mask.height;
+    if (x < 0 || y < 0 || x >= w || y >= h) {
+      return (outcome: RemoveTapOutcome.miss, mask: null);
+    }
+    if (mask.alpha[y * w + x] < cutoff) {
+      return (outcome: RemoveTapOutcome.miss, mask: null);
+    }
+
+    // Label every component, tracking sizes.
+    final labels = Int32List(mask.length);
+    final sizes = <int>[0]; // index = label
+    var current = 0;
+    final queue = Queue<int>();
+    for (var start = 0; start < mask.length; start++) {
+      if (mask.alpha[start] < cutoff || labels[start] != 0) continue;
+      current++;
+      sizes.add(0);
+      labels[start] = current;
+      queue.add(start);
+      while (queue.isNotEmpty) {
+        final p = queue.removeFirst();
+        sizes[current]++;
+        final px = p % w;
+        final py = p ~/ w;
+        if (px > 0) _visit(p - 1, cutoff, mask, labels, current, queue);
+        if (px < w - 1) _visit(p + 1, cutoff, mask, labels, current, queue);
+        if (py > 0) _visit(p - w, cutoff, mask, labels, current, queue);
+        if (py < h - 1) _visit(p + w, cutoff, mask, labels, current, queue);
+      }
+    }
+
+    final tapped = labels[y * w + x];
+    final tappedSize = sizes[tapped];
+    for (var l = 1; l <= current; l++) {
+      if (l != tapped && sizes[l] > tappedSize) {
+        // A bigger blob exists elsewhere → the tapped one is clutter: remove.
+        final object = Uint8List(mask.length);
+        for (var i = 0; i < mask.length; i++) {
+          if (labels[i] == tapped) object[i] = 255;
+        }
+        final softened = feather(mask.copyWith(alpha: object), 1);
+        return (
+          outcome: RemoveTapOutcome.removed,
+          mask: subtract(mask, softened),
+        );
+      }
+    }
+    return (outcome: RemoveTapOutcome.subject, mask: null);
+  }
 }
+
+/// What a tier-1 remove-object tap did (#83).
+enum RemoveTapOutcome { removed, subject, miss }
