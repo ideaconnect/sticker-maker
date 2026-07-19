@@ -342,6 +342,163 @@ void main() {
   });
 
   testWidgets(
+    'GIF + Static encodes only the current frame and drops the "animation" label',
+    (tester) async {
+      // A tall surface keeps every target card + the share button on-screen so
+      // taps land without scrolling.
+      TestWidgetsFlutterBinding.ensureInitialized()
+          .platformDispatcher
+          .views
+          .first
+          .physicalSize = const Size(
+        824,
+        2600,
+      );
+
+      List<Frame>? requestedFrames;
+      Future<EncodedSticker> fakeGif(
+        List<Frame> frames, {
+        double fps = 12,
+      }) async {
+        requestedFrames = frames;
+        return EncodedSticker(
+          bytes: Uint8List.fromList(const [1, 2, 3]),
+          size: 512,
+          format: 'gif',
+        );
+      }
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            editorControllerProvider.overrideWith(
+              () => EditorController(_animatedProject),
+            ),
+            animatedExportServiceProvider.overrideWithValue(
+              _FakeAnimatedExport(),
+            ),
+            gifEncoderProvider.overrideWithValue(fakeGif),
+          ],
+          child: MaterialApp(
+            theme: buildStickerTheme(),
+            home: const ExportScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Select GIF; the default mode is Animated, so the whole clip is encoded
+      // and the button advertises an animation.
+      await tester.tap(find.text('GIF'));
+      await tester.pump();
+      expect(requestedFrames, isNotNull);
+      expect(requestedFrames!.length, _animatedProject.frames.length);
+      expect(find.text('Share animation'), findsOneWidget);
+
+      // Switch to Static: the encoder must receive exactly one frame and the
+      // button must stop reading "Share animation".
+      await tester.tap(find.text('Static'));
+      await tester.pump();
+      expect(requestedFrames!.length, 1);
+      expect(requestedFrames!.single, _animatedProject.frames.first);
+      expect(find.text('Share animation'), findsNothing);
+      expect(find.text('Share sticker'), findsOneWidget);
+    },
+  );
+
+  testWidgets('PNG and WebP targets hide the Static/Animated toggle', (
+    tester,
+  ) async {
+    TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .views
+        .first
+        .physicalSize = const Size(
+      824,
+      2600,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          editorControllerProvider.overrideWith(
+            () => EditorController(_animatedProject),
+          ),
+          animatedExportServiceProvider.overrideWithValue(
+            _FakeAnimatedExport(),
+          ),
+        ],
+        child: MaterialApp(
+          theme: buildStickerTheme(),
+          home: const ExportScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Telegram (default): the animated project shows the toggle.
+    expect(find.text('Animated'), findsOneWidget);
+    expect(find.text('Static'), findsOneWidget);
+
+    // PNG is static-only — no toggle, so no "Animated" mode can be picked.
+    await tester.tap(find.text('PNG'));
+    await tester.pump();
+    expect(find.text('Animated'), findsNothing);
+    expect(find.text('Static'), findsNothing);
+
+    // WebP is likewise static-only.
+    await tester.tap(find.text('WebP'));
+    await tester.pump();
+    expect(find.text('Animated'), findsNothing);
+    expect(find.text('Static'), findsNothing);
+  });
+
+  testWidgets('Telegram keeps its working Static/Animated toggle', (
+    tester,
+  ) async {
+    TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .views
+        .first
+        .physicalSize = const Size(
+      824,
+      2600,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          editorControllerProvider.overrideWith(
+            () => EditorController(_animatedProject),
+          ),
+          animatedExportServiceProvider.overrideWithValue(
+            _FakeAnimatedExport(),
+          ),
+        ],
+        child: MaterialApp(
+          theme: buildStickerTheme(),
+          home: const ExportScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Default Telegram + animated project defaults to Animated mode.
+    expect(find.text('Share animation'), findsOneWidget);
+
+    // Static → a single-frame sticker; Animated → back to the clip.
+    await tester.tap(find.text('Static'));
+    await tester.pump();
+    expect(find.text('Share sticker'), findsOneWidget);
+    expect(find.text('Share animation'), findsNothing);
+
+    await tester.tap(find.text('Animated'));
+    await tester.pump();
+    expect(find.text('Share animation'), findsOneWidget);
+    expect(find.text('Share sticker'), findsNothing);
+  });
+
+  testWidgets(
     'the WhatsApp path emits exactly 512 px even when lossless overshoots '
     '(lossy ladder, never a downscale)',
     (tester) async {

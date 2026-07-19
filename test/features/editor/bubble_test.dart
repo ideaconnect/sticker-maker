@@ -147,6 +147,52 @@ void main() {
       expect(long, greaterThanOrEqualTo(6));
     });
 
+    test('a caption too long even for the floor size is clamped inside the '
+        'body (#79 / WYSIWYG)', () {
+      final captionRect = bubbleBodyRect(kBubbleBaseSize).deflate(10);
+      // ~1000 characters — far more than the ~165x86 caption rect can hold even
+      // at the 6 pt floor, so bubbleFitFontSize bottoms out without ever fitting
+      // and the render paths must clamp + ellipsize + clip.
+      final overflowing = 'overflowing caption ' * 50;
+
+      final fontSize = bubbleFitFontSize(
+        text: overflowing,
+        fontFamily: 'Bangers',
+        maxSize: 26,
+        bounds: captionRect.size,
+      );
+      final maxLines = bubbleCaptionMaxLines(fontSize, captionRect.height);
+      expect(maxLines, greaterThanOrEqualTo(1));
+
+      // Laid out exactly as BubbleView and StickerRenderer._paintBubble do.
+      final tp = TextPainter(
+        text: TextSpan(
+          text: overflowing,
+          style: TextStyle(
+            fontFamily: 'Bangers',
+            fontSize: fontSize,
+            height: 1.05,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+        maxLines: maxLines,
+        ellipsis: '…',
+      )..layout(maxWidth: captionRect.width);
+
+      expect(
+        tp.didExceedMaxLines,
+        isTrue,
+        reason: 'the caption is long enough to be clamped + ellipsized',
+      );
+      // The clamped block stays within the caption (body) rect in both paths,
+      // so it can never paint over the bubble outline/tail.
+      expect(tp.width, lessThanOrEqualTo(captionRect.width + 0.5));
+      expect(tp.height, lessThanOrEqualTo(captionRect.height + 0.5));
+      tp.dispose();
+    });
+
     test('every shape paints with tails in all four directions', () {
       for (final shape in BubbleShape.values) {
         for (final tail in const [

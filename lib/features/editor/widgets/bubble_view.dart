@@ -81,7 +81,23 @@ double bubbleFitFontSize({
       hi = mid;
     }
   }
+  // `lo` is the largest *tried* size that fits, but the 6.0 floor is returned
+  // unverified: a pathologically long caption can overflow even at 6 pt. The
+  // render paths ([BubbleView] and StickerRenderer._paintBubble) cap the line
+  // count via [bubbleCaptionMaxLines] + ellipsis and clip to the body so that
+  // floor can never paint over the outline/tail (#79 / WYSIWYG).
   return lo;
+}
+
+/// The largest number of whole lines of [fontSize] text (at the caption's 1.05
+/// line-height) that fit within [height]. Used to cap and ellipsize a caption
+/// that overflows even the [bubbleFitFontSize] floor, so it can never spill past
+/// the bubble body. Shared by [BubbleView] and the export renderer so the editor
+/// preview and the exported sticker clamp identically (#79 / WYSIWYG).
+int bubbleCaptionMaxLines(double fontSize, double height) {
+  if (fontSize <= 0 || height <= 0) return 1;
+  final lines = (height / (fontSize * 1.05)).floor();
+  return lines < 1 ? 1 : lines;
 }
 
 /// Renders a [BubbleLayer] as crisp vector paths (a shape body + tail) with a
@@ -105,6 +121,10 @@ class BubbleView extends StatelessWidget {
       maxSize: layer.fontSize * scale,
       bounds: captionRect.size,
     );
+    // A caption too long to fit even at the floor size is capped to whole lines
+    // and ellipsized, then clipped to the body — so it can never paint over the
+    // outline/tail. Normal captions fit within maxLines and are unaffected.
+    final maxLines = bubbleCaptionMaxLines(fontSize, captionRect.height);
     return SizedBox(
       width: size.width,
       height: size.height,
@@ -113,16 +133,20 @@ class BubbleView extends StatelessWidget {
           Positioned.fill(child: CustomPaint(painter: BubblePainter(layer))),
           Positioned.fromRect(
             rect: captionRect,
-            child: Center(
-              child: Text(
-                layer.text,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: layer.fontFamily,
-                  fontSize: fontSize,
-                  height: 1.05,
-                  color: layer.textColor,
-                  fontWeight: FontWeight.w700,
+            child: ClipRect(
+              child: Center(
+                child: Text(
+                  layer.text,
+                  textAlign: TextAlign.center,
+                  maxLines: maxLines,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: layer.fontFamily,
+                    fontSize: fontSize,
+                    height: 1.05,
+                    color: layer.textColor,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
