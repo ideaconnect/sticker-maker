@@ -1,6 +1,8 @@
 package tech.idct.sticker_maker
 
+import android.app.ActivityManager
 import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -63,6 +65,24 @@ class MainActivity : FlutterActivity() {
                             result.error("bad_args", "paths, mimeType and package are required", null)
                         } else {
                             result.success(shareToApp(paths, mime, pkg))
+                        }
+                    }
+                    // Device RAM snapshot so Dart can gate heavy AI features
+                    // (the SAM object-removal tier) on device capability.
+                    "getMemoryInfo" -> {
+                        try {
+                            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                            val info = ActivityManager.MemoryInfo()
+                            am.getMemoryInfo(info)
+                            result.success(
+                                mapOf(
+                                    "totalMem" to info.totalMem,
+                                    "availMem" to info.availMem,
+                                    "lowRam" to am.isLowRamDevice,
+                                ),
+                            )
+                        } catch (e: Exception) {
+                            result.error("memory_info_failed", e.message, null)
                         }
                     }
                     // Saves bytes into the shared Downloads collection.

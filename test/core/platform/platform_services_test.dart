@@ -83,4 +83,38 @@ void main() {
     expect(await svc.openUri(Uri.parse('tg://x')), isFalse);
     expect(await svc.saveToDownloads('a', 'image/gif', Uint8List(1)), isNull);
   });
+
+  test('memoryInfo passes the platform values through', () async {
+    mock(
+      (call) => {
+        'totalMem': 4294967296,
+        'availMem': 1073741824,
+        'lowRam': false,
+      },
+    );
+    final info = await PlatformServices(channel: channel).memoryInfo();
+    expect(calls.single.method, 'getMemoryInfo');
+    expect(info, isNotNull);
+    expect(info!.totalMem, 4294967296);
+    expect(info.availMem, 1073741824);
+    expect(info.lowRam, isFalse);
+  });
+
+  test('memoryInfo is null on platform error or malformed reply', () async {
+    mock((call) => throw PlatformException(code: 'memory_info_failed'));
+    expect(await PlatformServices(channel: channel).memoryInfo(), isNull);
+
+    mock((call) => {'totalMem': 'four gigs'});
+    expect(await PlatformServices(channel: channel).memoryInfo(), isNull);
+  });
+
+  test(
+    'memoryInfo is null when the call is not implemented (old APK)',
+    () async {
+      // No handler mocked at all -> MissingPluginException inside the channel.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+      expect(await PlatformServices(channel: channel).memoryInfo(), isNull);
+    },
+  );
 }
