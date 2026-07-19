@@ -156,6 +156,55 @@ void main() {
       final ids = p.frames.map((f) => f.layers.first.id).toSet();
       expect(ids.length, 3, reason: 'unique layer id per frame');
     });
+
+    test('reorderFrame moves a frame and the selection follows it', () {
+      final c = _container(_threeFrames);
+      _controllerFor(c)
+        ..selectFrame(0) // viewing f0
+        ..reorderFrame(0, 2); // f0 to the end
+
+      final p = c.read(editorControllerProvider).project;
+      expect(p.frames.map((f) => f.id), ['f1', 'f2', 'f0']);
+      expect(p.currentFrameIndex, 2, reason: 'the moved frame stays selected');
+      expect(p.currentFrame.id, 'f0');
+    });
+
+    test('reorderFrame is a single undoable step', () {
+      final c = _container(_threeFrames);
+      final ctrl = _controllerFor(c);
+      ctrl.reorderFrame(2, 0); // f2 to the front
+      expect(c.read(editorControllerProvider).project.frames.map((f) => f.id), [
+        'f2',
+        'f0',
+        'f1',
+      ]);
+
+      ctrl.undo();
+      expect(
+        c.read(editorControllerProvider).project.frames.map((f) => f.id),
+        ['f0', 'f1', 'f2'],
+        reason: 'one undo restores the whole move',
+      );
+    });
+
+    test('reorderFrame ignores out-of-range and no-op indices', () {
+      final c = _container(_threeFrames);
+      final ctrl = _controllerFor(c)
+        ..reorderFrame(0, 0) // no-op: same index
+        ..reorderFrame(-1, 1) // bad oldIndex
+        ..reorderFrame(5, 1) // bad oldIndex
+        ..reorderFrame(0, 9); // newIndex clamps to last -> the only real move
+
+      final p = c.read(editorControllerProvider).project;
+      expect(p.frames.map((f) => f.id), ['f1', 'f2', 'f0']);
+      // The ignored calls pushed nothing onto history: one undo restores.
+      ctrl.undo();
+      expect(c.read(editorControllerProvider).project.frames.map((f) => f.id), [
+        'f0',
+        'f1',
+        'f2',
+      ]);
+    });
   });
 
   group('playback', () {
@@ -223,6 +272,78 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('Frame 1 / 3'), findsOneWidget);
+
+      // Let the debounced auto-save timer fire so none is pending at teardown.
+      await tester.pump(const Duration(seconds: 1));
+    });
+  });
+
+  group('frame reorder (widget)', () {
+    late Directory tmp;
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('sm_reorder_');
+      final view = TestWidgetsFlutterBinding.ensureInitialized()
+          .platformDispatcher
+          .views
+          .first;
+      view.physicalSize = const Size(824, 1784);
+      view.devicePixelRatio = 2.0;
+    });
+    tearDown(() {
+      if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      final view = TestWidgetsFlutterBinding.ensureInitialized()
+          .platformDispatcher
+          .views
+          .first;
+      view.resetPhysicalSize();
+      view.resetDevicePixelRatio();
+    });
+
+    testWidgets('Move right on a frame reorders it in controller state', (
+      tester,
+    ) async {
+      final container = ProviderContainer(
+        overrides: [
+          projectRepositoryProvider.overrideWithValue(
+            ProjectRepository(baseDir: tmp),
+          ),
+          editorControllerProvider.overrideWith(
+            () => EditorController(_threeFrames),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: buildStickerTheme(),
+            home: const EditorScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Frames'));
+      await tester.pumpAndSettle();
+
+      // Long-press the first frame thumb (label '1') to open its menu. It sits
+      // at the left edge, so only "Move right" is offered.
+      await tester.longPress(find.text('1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Move left'), findsNothing);
+      expect(find.text('Move right'), findsOneWidget);
+
+      await tester.tap(find.text('Move right'));
+      await tester.pumpAndSettle();
+
+      final order = container
+          .read(editorControllerProvider)
+          .project
+          .frames
+          .map((f) => f.id);
+      expect(order, ['f1', 'f0', 'f2']);
 
       // Let the debounced auto-save timer fire so none is pending at teardown.
       await tester.pump(const Duration(seconds: 1));

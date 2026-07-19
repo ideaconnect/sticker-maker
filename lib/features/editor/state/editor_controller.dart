@@ -478,6 +478,29 @@ class EditorController extends Notifier<EditorState> {
     );
   }
 
+  /// Moves the frame at [oldIndex] to [newIndex] as a single undoable step,
+  /// mirroring [reorderLayer]'s list-move. The currently viewed frame stays
+  /// selected: its index follows the move (tracked by frame id). Out-of-range
+  /// or no-op indices are ignored.
+  void reorderFrame(int oldIndex, int newIndex) {
+    final project = state.project;
+    final frames = project.frames;
+    if (oldIndex < 0 || oldIndex >= frames.length) return;
+    final target = newIndex.clamp(0, frames.length - 1);
+    if (target == oldIndex) return;
+    final selectedId = frames[project.safeFrameIndex].id;
+    final next = [...frames];
+    final moved = next.removeAt(oldIndex);
+    next.insert(target, moved);
+    final current = next.indexWhere((f) => f.id == selectedId);
+    _commit(
+      project.copyWith(
+        frames: next,
+        currentFrameIndex: current < 0 ? project.safeFrameIndex : current,
+      ),
+    );
+  }
+
   void rename(String name) => _commit(state.project.copyWith(name: name));
 }
 
