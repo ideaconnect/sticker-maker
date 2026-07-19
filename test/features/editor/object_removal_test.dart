@@ -81,6 +81,20 @@ class _CannedMaskStore extends MaskStore {
   Future<AlphaMask> load(String path) async => canned;
 }
 
+/// A store whose save always fails — models a transient IO error (disk full)
+/// AFTER the engine already segmented successfully.
+class _FailingSaveMaskStore extends _CannedMaskStore {
+  _FailingSaveMaskStore(super.canned);
+
+  int saveCalls = 0;
+
+  @override
+  Future<String> save(AlphaMask mask, {String? id}) async {
+    saveCalls++;
+    throw const FileSystemException('disk full');
+  }
+}
+
 /// In-memory settings so the cutout panel resolves without host file IO.
 class _MemorySettingsStore extends SettingsStore {
   String? _segId;
@@ -117,6 +131,7 @@ Future<void> pumpEditor(
   required String photoPath,
   required ObjectSegmentationEngine engine,
   required AiCapability capability,
+  MaskStore? maskStore,
 }) async {
   final project = StickerProject(
     id: 'p',
@@ -147,7 +162,7 @@ Future<void> pumpEditor(
           const SegmentationRegistry([]),
         ),
         maskStoreProvider.overrideWithValue(
-          _CannedMaskStore(AlphaMask.filled(16, 16, 255)),
+          maskStore ?? _CannedMaskStore(AlphaMask.filled(16, 16, 255)),
         ),
         settingsStoreProvider.overrideWithValue(_MemorySettingsStore()),
         objectSegmentationEngineProvider.overrideWithValue(engine),
@@ -289,4 +304,58 @@ void main() {
     );
     await tester.pumpAndSettle();
   });
+
+  testWidgets(
+    'a failure AFTER segmentation (mask save) stays retryable — only an '
+    'engine throw may disable the SAM tier',
+    (tester) async {
+      final photoPath = await writePhotoFixture(tester);
+      // First call: a 8×8 corner object (partial overlap, passes the subject
+      // guard). Second call: null — deterministic "couldn't find" outcome
+      // proving the engine was re-invoked at all.
+      var call = 0;
+      final engine = _CountingObjectEngine(
+        onSegmentAt: () async {
+          call++;
+          if (call > 1) return null;
+          final object = AlphaMask.filled(16, 16, 0);
+          for (var y = 0; y < 8; y++) {
+            for (var x = 0; x < 8; x++) {
+              object.alpha[y * 16 + x] = 255;
+            }
+          }
+          return object;
+        },
+      );
+      final store = _FailingSaveMaskStore(AlphaMask.filled(16, 16, 255));
+      await pumpEditor(
+        tester,
+        photoPath: photoPath,
+        engine: engine,
+        capability: (samAllowed: true, reason: null),
+        maskStore: store,
+      );
+      await armRemoveObjectMode(tester);
+
+      // First tap: segmentation succeeds, the save throws → generic error
+      // toast, and the engine must NOT be blamed for the IO failure.
+      await tester.tap(find.byType(EditorCanvas));
+      await pumpUntilText(tester, "Couldn't remove that — try again");
+      expect(engine.segmentAtCalls, 1);
+      expect(store.saveCalls, 1, reason: 'the failure must come from save');
+      await tester.pumpAndSettle();
+
+      // Second tap: the tier is still live — the engine is paid again and
+      // the capability toast never appears.
+      await tester.tap(find.byType(EditorCanvas));
+      await pumpUntilText(tester, "Couldn't find an object there");
+      expect(
+        engine.segmentAtCalls,
+        2,
+        reason: 'a transient save failure must not disable the SAM tier',
+      );
+      expect(find.text(_capabilityToast), findsNothing);
+      await tester.pumpAndSettle();
+    },
+  );
 }

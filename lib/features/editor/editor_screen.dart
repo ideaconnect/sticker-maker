@@ -1365,9 +1365,22 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     }
     if (mounted) setState(() => _samBusy = true);
     try {
-      final object = await engine.segmentAt(layer.assetPath, [
-        PromptPoint(maskPoint),
-      ]);
+      final AlphaMask? object;
+      try {
+        object = await engine.segmentAt(layer.assetPath, [
+          PromptPoint(maskPoint),
+        ]);
+      } catch (_) {
+        // A throwing engine (broken ORT runtime, unloadable model) won't heal
+        // this session — remember it so the next tap short-circuits to the
+        // capability toast instead of re-paying the whole attempt. Only the
+        // engine call trips the flag: failures past this point (a transient
+        // mask-save IO error, say) are retryable and must not disable the
+        // tier.
+        _samEngineFailed = true;
+        if (mounted) _toast("Couldn't remove that — try again");
+        return;
+      }
       if (!mounted) return;
       final current = _workingMask;
       if (object == null || current == null) {
@@ -1398,10 +1411,6 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       await _applyRemovedMask(layer, next);
       if (mounted) _toast('Object removed — undo brings it back');
     } catch (_) {
-      // A throwing engine (broken ORT runtime, unloadable model) won't heal
-      // this session — remember it so the next tap short-circuits to the
-      // capability toast instead of re-paying the whole attempt.
-      _samEngineFailed = true;
       if (mounted) _toast("Couldn't remove that — try again");
     } finally {
       if (mounted) setState(() => _samBusy = false);
