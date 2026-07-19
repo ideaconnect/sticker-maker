@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../app/router.dart';
+import '../../core/models/frame.dart';
 import '../../core/models/sticker_project.dart';
 import '../../core/platform/platform_services.dart';
 import '../../core/theme/app_colors.dart';
@@ -24,6 +25,15 @@ import '../packs/sticker_pack.dart';
 import 'animated_export_service.dart';
 import 'animation_encoder.dart';
 import 'sticker_encoder.dart';
+
+/// The encoder used for the GIF target, injected so widget tests can observe
+/// the frames requested without a real rasterization pass. Production points at
+/// the pure-Dart [StickerEncoder.gif]; the screen hands it the full frame list
+/// in Animated mode and only the current frame in Static mode.
+typedef GifEncoder =
+    Future<EncodedSticker> Function(List<Frame> frames, {double fps});
+
+final gifEncoderProvider = Provider<GifEncoder>((ref) => StickerEncoder.gif);
 
 /// Export screen: live preview of the current project, static/animated toggle,
 /// target picker, a real size estimate, and export-via-share-sheet (#43/#44).
@@ -44,6 +54,16 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
   String? _sizeLabel;
   String? _sizeFormat; // upper-case format of the last estimate (PNG/WEBM/…)
   bool _initialized = false;
+
+  /// Monotonic id of the latest estimate request. Estimates can interleave
+  /// (encodes take seconds); only the request that still owns this generation
+  /// may write the label, so a slow stale encode never clobbers a fresh one.
+  int _estimateGen = 0;
+
+  /// Last successful encode, keyed by (target, Static/Animated toggle, project
+  /// revision). The size estimate already paid for a full encode — export and
+  /// download reuse those bytes instead of encoding the same thing again.
+  ({(String, bool, DateTime?) key, EncodedSticker sticker})? _lastEncode;
 
   static const _targets = <_Target>[
     _Target(
@@ -102,6 +122,20 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
       project.isAnimated &&
       (_target == 'whatsapp' || (_animated && _target == 'telegram'));
 
+  /// The Static/Animated toggle is only shown for targets that actually have
+  /// both forms, so every visible control changes the output: GIF (Static →
+  /// the current frame only, Animated → the full clip) and Telegram (static
+  /// .webp/.png vs animated .webm). PNG and WebP are static-only, and WhatsApp
+  /// is typed by the project (see [_useAnimatedSticker]), so the toggle is
+  /// hidden for those three — mirroring the existing WhatsApp exclusion.
+  bool get _modeToggleApplies => _target == 'gif' || _target == 'telegram';
+
+  /// Whether the current selection produces a true multi-frame animation. Drives
+  /// the share-button label so it never advertises an "animation" for a
+  /// single-frame artifact (e.g. a GIF exported in Static mode).
+  bool _producesAnimation(StickerProject project) =>
+      _useAnimatedSticker(project) || (_useGif(project) && _animated);
+
   int _pngSize() => _target == 'png' ? 1024 : 512;
 
   /// Encodes the current selection for the chosen target.
@@ -116,7 +150,12 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                 : AnimationSpec.whatsappWebp,
           );
     }
-    if (_useGif(project)) return StickerEncoder.gif(project.frames, fps: 12);
+    if (_useGif(project)) {
+      // Honor the Static/Animated toggle: Static exports only the current frame
+      // as a single-frame (still) GIF; Animated exports the full clip.
+      final frames = _animated ? project.frames : [project.currentFrame];
+      return ref.read(gifEncoderProvider)(frames, fps: 12);
+    }
     if (_target == 'whatsapp') {
       // WhatsApp's static cap is 100 KB — downscale WebP to fit.
       return StickerEncoder.webpWithinBudget(
@@ -128,20 +167,46 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     return StickerEncoder.png(project.currentFrame, size: _pngSize());
   }
 
-  /// Re-encodes the current selection to show a real size estimate.
+  /// Cache key for one encoded result. [_encode] is deterministic for a given
+  /// target + Static/Animated toggle + project revision (updatedAt is bumped on
+  /// every save), so a matching key means the bytes are still valid.
+  (String, bool, DateTime?) _encodeKey(StickerProject project) =>
+      (_target, _animated, project.updatedAt);
+
+  /// [_encode] with a single-entry result cache: when the key still matches
+  /// (same target/toggle/revision) the previous bytes are reused, so the
+  /// export/download tap doesn't re-pay for the encode the estimate already
+  /// ran. The key is captured before the await — [_encode] reads the target
+  /// state synchronously, so the result belongs to the captured key even if
+  /// the user switches targets mid-encode.
+  Future<EncodedSticker> _encodeCached(StickerProject project) async {
+    final key = _encodeKey(project);
+    final cached = _lastEncode;
+    if (cached != null && cached.key == key) return cached.sticker;
+    final sticker = await _encode(project);
+    _lastEncode = (key: key, sticker: sticker);
+    return sticker;
+  }
+
+  /// Encodes the current selection to show a real size estimate (the result is
+  /// cached and reused by the actual export). Guarded by [_estimateGen]: on
+  /// BOTH the success and the failure path a stale completion is discarded —
+  /// a stale error resetting the label would otherwise pin "Estimating…" over
+  /// a fresh result.
   Future<void> _updateEstimate() async {
+    final gen = ++_estimateGen;
     setState(() => _sizeLabel = null);
     final project = ref.read(editorControllerProvider).project;
     try {
-      final sticker = await _encode(project);
-      if (mounted) {
-        setState(() {
-          _sizeLabel = _formatBytes(sticker.byteLength);
-          _sizeFormat = sticker.format.toUpperCase();
-        });
-      }
+      final sticker = await _encodeCached(project);
+      if (!mounted || gen != _estimateGen) return;
+      setState(() {
+        _sizeLabel = _formatBytes(sticker.byteLength);
+        _sizeFormat = sticker.format.toUpperCase();
+      });
     } catch (_) {
-      if (mounted) setState(() => _sizeLabel = null);
+      if (!mounted || gen != _estimateGen) return;
+      setState(() => _sizeLabel = null);
     }
   }
 
@@ -157,7 +222,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     setState(() => _exporting = true);
     try {
       final project = ref.read(editorControllerProvider).project;
-      final sticker = await _encode(project);
+      final sticker = await _encodeCached(project);
       final dir = await getTemporaryDirectory();
       final name = _sanitize(project.name);
       final file = File(
@@ -220,7 +285,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     setState(() => _exporting = true);
     try {
       final project = ref.read(editorControllerProvider).project;
-      final sticker = await _encode(project);
+      final sticker = await _encodeCached(project);
       final name =
           '${_sanitize(project.name)}_${DateTime.now().millisecondsSinceEpoch}'
           '.${sticker.format}';
@@ -562,9 +627,11 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                 children: [
                   _preview(project),
                   const SizedBox(height: 18),
-                  // No Static/Animated choice for WhatsApp — the pack flow
-                  // types the sticker by the project (see _useAnimatedSticker).
-                  if (project.isAnimated && _target != 'whatsapp') ...[
+                  // Only show the Static/Animated choice for the targets it
+                  // actually controls (GIF & Telegram). PNG/WebP are static-only
+                  // and WhatsApp is typed by the project, so an inert toggle is
+                  // hidden for them (see [_modeToggleApplies]).
+                  if (project.isAnimated && _modeToggleApplies) ...[
                     _modeToggle(),
                     const SizedBox(height: 20),
                   ],
@@ -627,7 +694,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                         ? 'Working…'
                         : _target == 'whatsapp'
                         ? 'Add to WhatsApp'
-                        : 'Share ${_useGif(project) || _useAnimatedSticker(project) ? 'animation' : 'sticker'}',
+                        : 'Share ${_producesAnimation(project) ? 'animation' : 'sticker'}',
                     icon: _exporting
                         ? null
                         : _target == 'whatsapp'

@@ -131,6 +131,79 @@ void main() {
     });
   });
 
+  group('prepare()', () {
+    test(
+      'writes the PNG sequence once; each encode re-runs only ffmpeg',
+      () async {
+        final commands = <String>[];
+        final enc = FfmpegAnimWebpEncoder(
+          runner: _writingRunner(commands),
+          scratchDir: tmp,
+        );
+
+        final session = await enc.prepare([_frame(), _frame(), _frame()]);
+        final scratch = tmp.listSync().whereType<Directory>().single;
+        expect(
+          scratch.listSync().whereType<File>().where(
+            (f) => f.path.endsWith('.png'),
+          ),
+          hasLength(3),
+          reason: 'the %d.png sequence is written at prepare time',
+        );
+        expect(commands, isEmpty, reason: 'no ffmpeg run until encode');
+
+        await session.encode(quality: 80, loop: true);
+        await session.encode(quality: 50, loop: true);
+        expect(commands, hasLength(2));
+        expect(commands[0], contains('-q:v 80'));
+        expect(commands[1], contains('-q:v 50'));
+        // Both rungs read the SAME prepared sequence (compare by dir name —
+        // the command mixes separators on Windows).
+        final scratchName = scratch.path.replaceAll('\\', '/').split('/').last;
+        expect(commands[0], contains(scratchName));
+        expect(commands[1], contains(scratchName));
+
+        await session.dispose();
+        expect(scratch.existsSync(), isFalse, reason: 'dispose cleans up');
+        // dispose is idempotent.
+        await session.dispose();
+      },
+    );
+
+    test('the budget search reuses one scratch dir across all rungs', () async {
+      final commands = <String>[];
+      // The 5-byte payload never fits the 3-byte cap → every rung runs.
+      final enc = FfmpegWebmVp9Encoder(
+        runner: _writingRunner(commands, payload: [1, 2, 3, 4, 5]),
+        scratchDir: tmp,
+      );
+      const spec = AnimationSpec(format: 'webm', maxBytes: 3);
+
+      final result = await encodeWithinBudget(
+        enc,
+        [_frame(), _frame()],
+        spec,
+        qualities: const [300, 200, 100],
+      );
+
+      expect(result.withinBudget, isFalse);
+      expect(commands, hasLength(3), reason: 'one ffmpeg pass per rung');
+      final dirs = commands
+          .map((c) => RegExp(r'-i (.+?)[/\\]%d\.png').firstMatch(c)!.group(1))
+          .toSet();
+      expect(
+        dirs,
+        hasLength(1),
+        reason: 'the PNG sequence is written once and shared by every rung',
+      );
+      expect(
+        tmp.listSync().whereType<Directory>(),
+        isEmpty,
+        reason: 'scratch dir removed after the search',
+      );
+    });
+  });
+
   group('isAvailable', () {
     test('true when -encoders lists the codec (cached)', () async {
       var calls = 0;
@@ -179,6 +252,33 @@ void main() {
       expect(result.withinBudget, isTrue);
       expect(result.quality, 100);
       expect(result.bytes.length, 200);
+    });
+
+    test('prepares the frames once while N rungs run', () async {
+      final fake = FakeAnimationEncoder();
+      const spec = AnimationSpec(format: 'webp', maxBytes: 250);
+      final result = await encodeWithinBudget(
+        fake,
+        [_frame(), _frame()],
+        spec,
+        qualities: const [200, 150, 100], // 400, 300, 200 bytes → 3 rungs
+      );
+      expect(result.withinBudget, isTrue);
+      expect(
+        fake.prepareCalls,
+        1,
+        reason: 'one prepare for the whole budget search',
+      );
+      expect(
+        fake.sessionEncodeCalls,
+        3,
+        reason: 'only the codec pass re-runs per rung',
+      );
+      expect(
+        fake.disposeCalls,
+        1,
+        reason: 'the session is released after the search',
+      );
     });
 
     test(

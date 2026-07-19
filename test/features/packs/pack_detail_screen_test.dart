@@ -60,8 +60,11 @@ StickerPack _seedPack() => StickerPack(
   ],
 );
 
-Future<_FakePackRepository> _pumpDetail(WidgetTester tester) async {
-  final repo = _FakePackRepository([_seedPack()]);
+Future<_FakePackRepository> _pumpDetail(
+  WidgetTester tester, {
+  StickerPack? pack,
+}) async {
+  final repo = _FakePackRepository([pack ?? _seedPack()]);
   final router = GoRouter(
     initialLocation: '/',
     routes: [
@@ -477,5 +480,51 @@ void main() {
 
       await _dismissToast(tester);
     });
+  });
+
+  testWidgets('a complete, resolvable pack is ready and offers sharing', (
+    tester,
+  ) async {
+    await _pumpDetail(
+      tester,
+      pack: StickerPack(
+        id: 'pack1',
+        name: 'Doggos',
+        stickers: [
+          _sticker('p_rex', emojis: const ['🐶']),
+          _sticker('p_bella', emojis: const ['🐕']),
+          _sticker('p_charlie', emojis: const ['🦴']),
+        ],
+      ),
+    );
+
+    expect(find.text('Ready to share'), findsOneWidget);
+    expect(find.text('Add to WhatsApp'), findsOneWidget);
+    expect(find.text('Add to Telegram'), findsOneWidget);
+  });
+
+  testWidgets('a dangling reference blocks sharing with an explanation', (
+    tester,
+  ) async {
+    // 3 tagged stickers — but p_gone's source project was deleted. Without the
+    // dangling-reference check this pack would look Ready and install short.
+    await _pumpDetail(
+      tester,
+      pack: StickerPack(
+        id: 'pack1',
+        name: 'Doggos',
+        stickers: [
+          _sticker('p_rex', emojis: const ['🐶']),
+          _sticker('p_bella', emojis: const ['🐕']),
+          _sticker('p_gone', emojis: const ['🦴']),
+        ],
+      ),
+    );
+
+    expect(find.text('Not ready yet'), findsOneWidget);
+    expect(find.textContaining('missing its source project'), findsOneWidget);
+    expect(find.text('Missing sticker'), findsOneWidget);
+    expect(find.text('Add to WhatsApp'), findsNothing);
+    expect(find.text('Add to Telegram'), findsNothing);
   });
 }

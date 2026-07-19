@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/models/frame.dart';
+import '../../core/models/layer.dart';
 import '../../core/models/sticker_project.dart';
 
 /// Persists [StickerProject]s as JSON manifests under the app documents
@@ -24,24 +27,49 @@ class ProjectRepository {
 
   File _file(Directory dir, String id) => File('${dir.path}/$id.json');
 
+  /// Atomically replaces `<id>.json`: the manifest is written to a sibling
+  /// `<id>.json.tmp` first, then renamed over the target (a same-filesystem
+  /// [File.rename] replaces the destination in one step). The editor autosaves
+  /// on a debounce, so a mid-write kill must never leave a truncated manifest
+  /// where the last good one was.
   Future<void> save(StickerProject project) async {
     final dir = await _dir();
-    await _file(dir, project.id).writeAsString(jsonEncode(project.toJson()));
+    final tmp = File('${dir.path}/${project.id}.json.tmp');
+    try {
+      await tmp.writeAsString(jsonEncode(project.toJson()), flush: true);
+      await tmp.rename(_file(dir, project.id).path);
+    } catch (_) {
+      try {
+        if (tmp.existsSync()) tmp.deleteSync();
+      } catch (_) {
+        // Best-effort cleanup; a stray .tmp is ignored by list()/the sweep.
+      }
+      rethrow;
+    }
   }
 
-  /// All saved projects, most-recently-updated first. Corrupt manifests are
-  /// skipped rather than throwing.
+  /// All saved projects, most-recently-updated first. A manifest that fails to
+  /// parse is quarantined (best-effort) to `<id>.json.corrupt` so it stops
+  /// shadowing its id — a later [save] of the same project recovers the slot —
+  /// and stays on disk for inspection. `*.tmp` / `*.corrupt` files are never
+  /// listed.
   Future<List<StickerProject>> list() async {
     final dir = await _dir();
     final result = <StickerProject>[];
     for (final entity in dir.listSync()) {
+      // `.json.tmp` / `.json.corrupt` don't match the `.json` suffix check.
       if (entity is! File || !entity.path.endsWith('.json')) continue;
       try {
         final map = (jsonDecode(await entity.readAsString()) as Map)
             .cast<String, dynamic>();
         result.add(StickerProject.fromJson(map));
       } catch (_) {
-        // Skip an unreadable / outdated manifest.
+        // Unreadable / outdated manifest: move it aside and keep going.
+        try {
+          await entity.rename('${entity.path}.corrupt');
+        } catch (_) {
+          // Best-effort — if the rename fails we still skip the file.
+        }
       }
     }
     DateTime key(StickerProject p) =>
@@ -57,6 +85,50 @@ class ProjectRepository {
     final map = (jsonDecode(await file.readAsString()) as Map)
         .cast<String, dynamic>();
     return StickerProject.fromJson(map);
+  }
+
+  /// Saves a deep copy of project [id] under fresh ids — a new project id and
+  /// new ids for every frame and layer — named `<old> copy`. Image/mask files
+  /// are shared with the source, never re-copied: [sweepOrphanAssets]
+  /// refcounts paths across all manifests, so a shared file survives until the
+  /// last project referencing it is gone. Returns the copy, or null when the
+  /// source manifest is missing/corrupt.
+  Future<StickerProject?> duplicate(String id, {DateTime? now}) async {
+    final StickerProject? source;
+    try {
+      source = await load(id);
+    } catch (_) {
+      return null; // unreadable manifest — nothing to duplicate
+    }
+    if (source == null) return null;
+    final at = now ?? DateTime.now();
+    final newId = 'sm_${at.microsecondsSinceEpoch}';
+    var layerSeq = 0;
+    Layer freshLayer(Layer layer) {
+      final layerId = '${newId}_l${layerSeq++}';
+      return switch (layer) {
+        ImageLayer() => layer.copyWith(id: layerId),
+        TextLayer() => layer.copyWith(id: layerId),
+        BubbleLayer() => layer.copyWith(id: layerId),
+      };
+    }
+
+    final copy = StickerProject(
+      id: newId,
+      name: '${source.name} copy',
+      currentFrameIndex: source.currentFrameIndex,
+      createdAt: at,
+      updatedAt: at,
+      frames: [
+        for (final (i, frame) in source.frames.indexed)
+          Frame(
+            id: '${newId}_f$i',
+            layers: frame.layers.map(freshLayer).toList(),
+          ),
+      ],
+    );
+    await save(copy);
+    return copy;
   }
 
   Future<void> delete(String id) async {
@@ -78,22 +150,38 @@ class ProjectRepository {
   ///   manifest no longer does.
   /// - Files younger than [minAge] are always kept — an import may not have
   ///   reached a (debounce-saved) manifest yet.
-  /// - If ANY manifest fails to parse, the sweep aborts: a corrupt project's
-  ///   references must not be mistaken for orphans.
+  /// - If ANY manifest fails to parse — including one already quarantined as
+  ///   `.json.corrupt` — the sweep aborts: a corrupt project's references
+  ///   must not be mistaken for orphans.
+  ///
+  /// The directory iteration + manifest parsing run inside [Isolate.run], so
+  /// the cold-launch call in `main()` never blocks the UI isolate however
+  /// large the asset dir has grown.
   ///
   /// Returns the number of files deleted.
   Future<int> sweepOrphanAssets({
     Duration minAge = const Duration(minutes: 10),
   }) async {
-    final dir = await _dir();
-    final assets = Directory('${dir.path}/assets');
+    final dirPath = (await _dir()).path;
+    return Isolate.run(() => _sweepOrphanAssetsSync(dirPath, minAge));
+  }
+
+  /// Synchronous sweep body — safe to run on a worker isolate (`dart:io`
+  /// only, no platform channels; the resolved base dir path is passed in).
+  static int _sweepOrphanAssetsSync(String dirPath, Duration minAge) {
+    final dir = Directory(dirPath);
+    final assets = Directory('$dirPath/assets');
     if (!assets.existsSync()) return 0;
 
     final referenced = <String>{};
     for (final entity in dir.listSync()) {
-      if (entity is! File || !entity.path.endsWith('.json')) continue;
+      if (entity is! File) continue;
+      if (entity.path.endsWith('.corrupt')) {
+        return 0; // quarantined manifest — its references are invisible, abort
+      }
+      if (!entity.path.endsWith('.json')) continue;
       try {
-        _collectAssetRefs(jsonDecode(await entity.readAsString()), referenced);
+        _collectAssetRefs(jsonDecode(entity.readAsStringSync()), referenced);
       } catch (_) {
         return 0; // corrupt manifest — its references are invisible, abort
       }

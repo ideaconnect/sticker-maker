@@ -7,8 +7,10 @@ import '../../core/models/sticker_project.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
+import '../../core/widgets/name_prompt.dart';
 import '../../core/widgets/responsive_center.dart';
 import '../editor/state/editor_controller.dart';
+import 'project_delete.dart';
 import 'project_repository.dart';
 import 'widgets/project_tile.dart';
 
@@ -45,8 +47,31 @@ class _AllProjectsScreenState extends ConsumerState<AllProjectsScreen> {
     context.pushNamed(Routes.editor);
   }
 
-  Future<void> _deleteProject(String id) async {
-    await ref.read(projectRepositoryProvider).delete(id);
+  /// Confirms (warning about pack membership) and deletes, cascading the
+  /// project's pack slots so no pack keeps a dangling reference.
+  Future<void> _deleteProject(StickerProject project) =>
+      confirmAndDeleteProject(context, ref, project);
+
+  /// Renames a saved sticker in place: dialog → load → copyWith(name) → save.
+  /// A cancelled or blank dialog keeps the old name.
+  Future<void> _renameProject(StickerProject p) async {
+    final name = await promptName(
+      context,
+      title: 'Rename sticker',
+      initial: p.name,
+      hint: 'Sticker name',
+    );
+    if (name == null) return;
+    final repo = ref.read(projectRepositoryProvider);
+    final current = await repo.load(p.id) ?? p;
+    await repo.save(current.copyWith(name: name, updatedAt: DateTime.now()));
+    ref.invalidate(savedProjectsProvider);
+  }
+
+  /// Saves a deep copy (`<name> copy`, fresh ids, shared asset files) and
+  /// refreshes the list.
+  Future<void> _duplicateProject(String id) async {
+    await ref.read(projectRepositoryProvider).duplicate(id);
     ref.invalidate(savedProjectsProvider);
   }
 
@@ -106,7 +131,9 @@ class _AllProjectsScreenState extends ConsumerState<AllProjectsScreen> {
                             project: p,
                             radius: tokens.radiusCard,
                             onTap: () => _openProject(p),
-                            onDelete: () => _deleteProject(p.id),
+                            onRename: () => _renameProject(p),
+                            onDuplicate: () => _duplicateProject(p.id),
+                            onDelete: () => _deleteProject(p),
                           ),
                       ],
                     );

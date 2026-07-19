@@ -74,6 +74,9 @@ class StickerCanvas extends StatelessWidget {
         fontSize: layer.fontSize * scale,
         color: layer.color,
         rotation: 0, // rotation handled by the enclosing Transform
+        // Scale the outline/shadow/tracking with the canvas so the preview and
+        // thumbnails match the 512-px export (StickerRenderer._paintText).
+        scale: scale,
         decorative: layer.decorative,
       ),
       BubbleLayer() => BubbleView(layer: layer, scale: scale),
