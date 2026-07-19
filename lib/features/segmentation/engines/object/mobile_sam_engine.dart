@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
@@ -64,12 +65,32 @@ class MobileSamEngine implements ObjectSegmentationEngine {
   /// 1024² frame — only the top-left (resized/4) region is valid.
   static const int lowResSide = 256;
 
+  /// Disk-cache entries beyond this count are pruned (newest mtime wins);
+  /// each entry is ~4 MB, so the cache tops out around 32 MB.
+  static const int maxDiskCacheEntries = 8;
+
+  /// Exact byte length of a valid disk-cache entry: a 4×int32 header
+  /// followed by the fixed 1×256×64×64 fp32 embedding.
+  static const int _cacheEntryBytes = 16 + 256 * 64 * 64 * 4;
+
   final Future<OrtGraph> Function(String assetKey) _graphFactory;
   final AssetBundle _bundle;
   final Directory? _cacheDirOverride;
 
-  OrtGraph? _decoder;
+  /// Single-flight decoder creation: holding the FUTURE (not the session)
+  /// closes the `_decoder ??= await ...` check-then-act race where two
+  /// concurrent taps each create a session and one leaks unreferenced.
+  Future<OrtGraph>? _decoder;
   final Map<String, _Embedded> _memoryCache = {};
+
+  /// In-flight embedding passes by cache key, so concurrent
+  /// `precompute()`/`segmentAt()` on the same photo share ONE decode +
+  /// encoder pass (review 2026-07-19: two concurrent TinyViT sessions double
+  /// the peak-RAM spike on exactly the low-RAM devices closest to an OOM
+  /// kill). Entries are evicted on completion; failures stay retryable.
+  final Map<String, Future<_Embedded>> _inFlight = {};
+
+  bool _legacyCacheSwept = false;
 
   @override
   Future<bool> isAvailable() async {
@@ -115,7 +136,7 @@ class MobileSamEngine implements ObjectSegmentationEngine {
     }
     labels[n - 1] = -1; // pad point at (0,0)
 
-    final decoder = _decoder ??= await _graphFactory(decoderAsset);
+    final decoder = await _ensureDecoder();
     final outputs = await decoder.run(
       {
         'image_embeddings': (data: embedded.embedding, shape: [1, 256, 64, 64]),
@@ -154,13 +175,39 @@ class MobileSamEngine implements ObjectSegmentationEngine {
 
   @override
   Future<void> dispose() async {
-    await _decoder?.dispose();
+    final decoder = _decoder;
     _decoder = null;
     _memoryCache.clear();
+    _inFlight.clear();
+    if (decoder != null) {
+      try {
+        await (await decoder).dispose();
+      } catch (_) {
+        // The create itself failed — no session to free.
+      }
+    }
+  }
+
+  Future<OrtGraph> _ensureDecoder() {
+    final existing = _decoder;
+    if (existing != null) return existing;
+    final created = _graphFactory(decoderAsset);
+    _decoder = created;
+    // Evict a failed create so a transient error (e.g. a low-memory hiccup)
+    // does not poison every subsequent tap with the same stored failure.
+    unawaited(
+      created.then<void>(
+        (_) {},
+        onError: (Object _) {
+          if (identical(_decoder, created)) _decoder = null;
+        },
+      ),
+    );
+    return created;
   }
 
   // ------------------------------------------------------------ embedding
-  Future<_Embedded> _ensureEmbedding(String imagePath) async {
+  Future<_Embedded> _ensureEmbedding(String imagePath) {
     final file = File(imagePath);
     final stat = file.statSync();
     final key =
@@ -168,8 +215,19 @@ class MobileSamEngine implements ObjectSegmentationEngine {
         '${imagePath.hashCode.toRadixString(16)}';
 
     final cached = _memoryCache[key];
-    if (cached != null) return cached;
+    if (cached != null) return Future.value(cached);
 
+    // Single-flight per photo: the future is stored BEFORE anything is
+    // awaited, so a tap that lands while the armed-mode precompute() is
+    // still encoding joins that pass instead of starting a second one.
+    // Completion always evicts the slot — success is served from
+    // _memoryCache/disk, and a transient failure stays retryable.
+    return _inFlight[key] ??= _computeEmbedding(file, key).whenComplete(() {
+      _inFlight.remove(key);
+    });
+  }
+
+  Future<_Embedded> _computeEmbedding(File file, String key) async {
     final disk = await _loadDiskCache(key);
     if (disk != null) {
       _remember(key, disk);
@@ -218,10 +276,36 @@ class MobileSamEngine implements ObjectSegmentationEngine {
   }
 
   Future<Directory> _cacheDir() async {
-    final base = _cacheDirOverride ?? await getApplicationSupportDirectory();
+    Directory base;
+    final override = _cacheDirOverride;
+    if (override != null) {
+      base = override;
+    } else {
+      // The CACHE directory (not app-support): embeddings are recomputable,
+      // so they belong where 'Clear cache' and OS storage pressure can
+      // reclaim them (review 2026-07-19).
+      base = await getApplicationCacheDirectory();
+      if (!_legacyCacheSwept) {
+        _legacyCacheSwept = true;
+        unawaited(_deleteLegacyCache());
+      }
+    }
     final dir = Directory('${base.path}/sam_embeddings');
     if (!dir.existsSync()) await dir.create(recursive: true);
     return dir;
+  }
+
+  /// One-time best-effort removal of the pre-move cache location under
+  /// app-support, which the OS never reclaims.
+  static Future<void> _deleteLegacyCache() async {
+    try {
+      final legacy = Directory(
+        '${(await getApplicationSupportDirectory()).path}/sam_embeddings',
+      );
+      if (legacy.existsSync()) await legacy.delete(recursive: true);
+    } catch (_) {
+      // Best-effort: a stranded legacy dir is just the pre-move status quo.
+    }
   }
 
   Future<_Embedded?> _loadDiskCache(String key) async {
@@ -229,6 +313,17 @@ class MobileSamEngine implements ObjectSegmentationEngine {
       final file = File('${(await _cacheDir()).path}/$key.bin');
       if (!file.existsSync()) return null;
       final bytes = await file.readAsBytes();
+      if (bytes.lengthInBytes != _cacheEntryBytes) {
+        // Truncated/corrupt entry (e.g. the process was killed mid-write
+        // before the tmp+rename hardening existed). It must not shadow
+        // recomputation forever — delete it and fall through to the encoder.
+        try {
+          await file.delete();
+        } catch (_) {
+          // Windows can briefly hold the handle; the next load retries.
+        }
+        return null;
+      }
       final header = Int32List.view(bytes.buffer, 0, 4);
       final floats = Float32List.view(bytes.buffer, 16);
       return _Embedded(
@@ -244,7 +339,9 @@ class MobileSamEngine implements ObjectSegmentationEngine {
   }
 
   Future<void> _saveDiskCache(String key, _Embedded e) async {
+    File? tmp;
     try {
+      final dir = await _cacheDir();
       final builder = BytesBuilder(copy: false)
         ..add(
           Int32List.fromList([
@@ -260,11 +357,44 @@ class MobileSamEngine implements ObjectSegmentationEngine {
             e.embedding.lengthInBytes,
           ),
         );
-      await File(
-        '${(await _cacheDir()).path}/$key.bin',
-      ).writeAsBytes(builder.takeBytes());
+      // Write-then-rename so a mid-write kill can never leave a truncated
+      // .bin behind (File.rename replaces an existing destination).
+      tmp = File('${dir.path}/$key.bin.tmp');
+      await tmp.writeAsBytes(builder.takeBytes(), flush: true);
+      await tmp.rename('${dir.path}/$key.bin');
+      tmp = null;
+      await _pruneDiskCache(dir);
     } catch (_) {
       // Disk cache is an optimization — never fail the pipeline over it.
+      try {
+        await tmp?.delete();
+      } catch (_) {
+        // Best-effort cleanup only.
+      }
+    }
+  }
+
+  /// Caps the disk cache at [maxDiskCacheEntries] embeddings — newest by
+  /// mtime win. Best-effort, called after each save.
+  Future<void> _pruneDiskCache(Directory dir) async {
+    try {
+      final entries = <(File, DateTime)>[];
+      for (final entity in dir.listSync()) {
+        if (entity is File && entity.path.endsWith('.bin')) {
+          entries.add((entity, entity.statSync().modified));
+        }
+      }
+      if (entries.length <= maxDiskCacheEntries) return;
+      entries.sort((a, b) => b.$2.compareTo(a.$2));
+      for (final (file, _) in entries.skip(maxDiskCacheEntries)) {
+        try {
+          file.deleteSync();
+        } catch (_) {
+          // A locked file just survives until the next prune.
+        }
+      }
+    } catch (_) {
+      // Pruning is best-effort.
     }
   }
 

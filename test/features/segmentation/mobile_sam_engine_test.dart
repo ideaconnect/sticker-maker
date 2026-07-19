@@ -133,4 +133,97 @@ void main() {
     expect(await sam.segmentAt(photo.path, const []), isNull);
     expect(created, isEmpty);
   });
+
+  test('concurrent precompute + segmentAt share ONE encoder pass', () async {
+    final created = <String>[];
+    final enc = encoder();
+    final sam = engine(enc, decoder(), created);
+
+    // Arm-the-mode warm-up and a fast first tap, in flight together — the
+    // race that used to run two TinyViT sessions (and two full-res decodes)
+    // concurrently, doubling the peak-RAM spike.
+    final warmUp = sam.precompute(photo.path);
+    final mask = await sam.segmentAt(photo.path, [
+      const PromptPoint(Offset(100, 50)),
+    ]);
+    await warmUp;
+
+    expect(mask, isNotNull);
+    expect(
+      created.where((a) => a.contains('encoder')),
+      hasLength(1),
+      reason: 'in-flight dedup: one encoder session shared by both callers',
+    );
+    expect(enc.calls, hasLength(1), reason: 'and it ran exactly once');
+  });
+
+  test('a truncated disk-cache entry is rejected, deleted, and the embedding '
+      'recomputed', () async {
+    final sam = engine(encoder(), decoder(), <String>[]);
+    await sam.precompute(photo.path);
+
+    final bin = Directory(
+      '${tmp.path}/sam_embeddings',
+    ).listSync().whereType<File>().singleWhere((f) => f.path.endsWith('.bin'));
+    final valid = bin.readAsBytesSync();
+    // Chop the file mid-embedding — the shape a mid-write process kill left
+    // behind. (Length stays 4-byte aligned so the old header/view parse
+    // would have "succeeded" and served garbage forever.)
+    bin.writeAsBytesSync(valid.sublist(0, 1016));
+
+    final created2 = <String>[];
+    final sam2 = engine(encoder(), decoder(), created2);
+    final mask = await sam2.segmentAt(photo.path, [
+      const PromptPoint(Offset(100, 50)),
+    ]);
+
+    expect(mask, isNotNull);
+    expect(
+      created2.where((a) => a.contains('encoder')),
+      hasLength(1),
+      reason: 'the corrupt entry must not shadow recomputation',
+    );
+    expect(
+      bin.lengthSync(),
+      valid.length,
+      reason: 'the truncated file was deleted and replaced by a valid one',
+    );
+  });
+
+  test('the disk cache is pruned to the newest 8 entries', () async {
+    final sam = engine(encoder(), decoder(), <String>[]);
+    final photos = <File>[];
+    for (var i = 0; i < 10; i++) {
+      final p = File('${tmp.path}/photo_$i.png')
+        ..writeAsBytesSync(img.encodePng(img.Image(width: 40, height: 20)));
+      photos.add(p);
+      await sam.precompute(p.path);
+    }
+
+    final bins = Directory('${tmp.path}/sam_embeddings')
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.bin'))
+        .toList();
+    expect(bins, hasLength(MobileSamEngine.maxDiskCacheEntries));
+
+    // The most recently saved photo's entry must be among the survivors.
+    final stat = photos.last.statSync();
+    final key =
+        '${stat.size}_${stat.modified.millisecondsSinceEpoch}_'
+        '${photos.last.path.hashCode.toRadixString(16)}';
+    expect(bins.map((f) => f.uri.pathSegments.last), contains('$key.bin'));
+  });
+
+  test('no .tmp file remains after a successful save', () async {
+    final sam = engine(encoder(), decoder(), <String>[]);
+    await sam.precompute(photo.path);
+
+    final entries = Directory('${tmp.path}/sam_embeddings').listSync();
+    expect(
+      entries.whereType<File>().where((f) => f.path.endsWith('.bin')),
+      hasLength(1),
+    );
+    expect(entries.where((f) => f.path.endsWith('.tmp')), isEmpty);
+  });
 }
