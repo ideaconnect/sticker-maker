@@ -95,6 +95,14 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   // dabs (each stroke starts only after the previous one has fully applied).
   Future<void> _strokeLock = Future<void>.value();
 
+  // Reclaims superseded mask PNGs (previous cut-out / erase files a newer mask
+  // replaced) once they fall out of undo/redo reach, so intermediate masks
+  // don't pile up as orphans (#review perf 2026-07-19). Never deletes a path a
+  // live undo entry could still restore — see [EditorController.isMaskReferenced].
+  late final SupersededMaskCollector _maskGc = SupersededMaskCollector(
+    ref.read(maskStoreProvider),
+  );
+
   Timer? _saveTimer;
   StickerProject? _pendingSave;
   // Captured during build so dispose() can save without touching `ref`
@@ -189,6 +197,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       if (next.tool != EditorTool.frames && _isPlaying) {
         _stopPlayback();
       }
+      // A commit / undo / redo may have dropped the last history reference to a
+      // superseded mask — reclaim any now-unreachable files (no-op when none are
+      // pending). Runs off the frame; the file delete never blocks the gesture.
+      unawaited(_maskGc.collect(_controller.isMaskReferenced));
     });
     return Scaffold(
       body: SafeArea(
@@ -1188,6 +1200,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       // (docs/reviews/2026-07-19-review.md).
       final mask = await _processCutoutMask(result.mask);
       final path = await ref.read(maskStoreProvider).save(mask, id: image.id);
+      _maskGc.supersede(image.maskPath, path);
       _controller.setImageMask(image.id, path);
       if (mounted) {
         // Report which engine actually ran — it may differ from the preference
@@ -1270,6 +1283,9 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           .read(maskStoreProvider)
           .save(painted, id: layer.id);
       if (!mounted) return;
+      // The mask this stroke replaces becomes an undo-only reference; queue it
+      // for reclamation once it drops out of history.
+      _maskGc.supersede(layer.maskPath, path);
       _workingMaskPath = path;
       _controller.setImageMask(layer.id, path);
     } catch (_) {
@@ -1333,6 +1349,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     _workingMask = next;
     final path = await ref.read(maskStoreProvider).save(next, id: layer.id);
     if (!mounted) return;
+    _maskGc.supersede(layer.maskPath, path);
     _workingMaskPath = path;
     _controller.setImageMask(layer.id, path);
   }
