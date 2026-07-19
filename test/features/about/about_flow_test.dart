@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sticker_maker/app/app.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
 import 'package:sticker_maker/core/settings/settings_store.dart';
+import 'package:sticker_maker/core/widgets/app_logo.dart';
 import 'package:sticker_maker/features/home/project_repository.dart';
 import 'package:sticker_maker/features/packs/pack_repository.dart';
 import 'package:sticker_maker/features/packs/sticker_pack.dart';
@@ -58,6 +59,8 @@ void main() {
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
 
+    // Home header + sheet header both show the logo mark.
+    expect(find.byType(AppLogo), findsNWidgets(2));
     // Both sheet rows are present (leading icons are unique to the sheet here).
     expect(find.byIcon(Icons.verified_user_outlined), findsOneWidget);
     expect(find.byIcon(Icons.article_outlined), findsOneWidget);

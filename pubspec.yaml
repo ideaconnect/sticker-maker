@@ -78,7 +78,10 @@ flutter:
   generate: true
 
   assets:
-    - assets/branding/
+    # Only the in-app mark ships: the other assets/branding/* layers are
+    # build-time sources for flutter_launcher_icons / flutter_native_splash,
+    # which bake them into res/ themselves (~1.9 MB that need not be in the APK).
+    - assets/branding/logo.png
     # On-device segmentation fallback weights (#28): the bundled U²-Netp ONNX.
     # Bundled as single files (never the whole dir) so conversion sources —
     # the .pt/.pth checkpoints — never ship in the app bundle.
@@ -123,12 +126,22 @@ flutter:
         - asset: assets/fonts/Rubik-Variable.ttf
 
 # App launcher icon — regenerate with: dart run flutter_launcher_icons
+# The assets below are themselves generated from the master artwork by
+# `python tools/build_branding.py` (see its header); edit that, not the PNGs.
 flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/branding/icon.png"
-  adaptive_icon_background: "#131019"
+  # Image background, not a flat colour: the artwork's gradient runs edge to
+  # edge so every launcher mask shape sees gradient and never a dark frame.
+  adaptive_icon_background: "assets/branding/adaptive_background.png"
   adaptive_icon_foreground: "assets/branding/icon_foreground.png"
+  # The foreground is already drawn to the 66dp safe circle, so the generator's
+  # default 16 % inset would shrink it a second time.
+  adaptive_icon_foreground_inset: 0
+  # Android 13+ themed icons; without it the launcher tints a desaturated crop
+  # of the full-colour foreground.
+  adaptive_icon_monochrome: "assets/branding/icon_monochrome.png"
   min_sdk_android: 26
 
 # Splash screen — regenerate with: dart run flutter_native_splash:create
@@ -137,4 +150,6 @@ flutter_native_splash:
   image: assets/branding/splash.png
   android_12:
     color: "#131019"
-    image: assets/branding/splash.png
+    # The Android 12+ splash icon is masked to the centre 768 px of a 1152 px
+    # canvas, so it needs its own smaller-in-frame artwork.
+    image: assets/branding/splash_android12.png

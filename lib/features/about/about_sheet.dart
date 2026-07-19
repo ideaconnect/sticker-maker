@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
-import '../../core/theme/sm_tokens.dart';
+import '../../core/widgets/app_logo.dart';
 import 'about_data.dart';
 
 /// Opens the About / settings sheet from the Home avatar: app identity plus
@@ -33,7 +33,6 @@ class _AboutSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = parentContext.sm;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
@@ -52,23 +51,11 @@ class _AboutSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 18),
-            Row(
+            const Row(
               children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    gradient: tokens.logoGradient,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.auto_awesome,
-                    size: 24,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
+                AppLogo(size: 46, radius: 14),
+                SizedBox(width: 12),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
