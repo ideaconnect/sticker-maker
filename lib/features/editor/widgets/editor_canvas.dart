@@ -273,10 +273,7 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
     final cosA = math.cos(-t.rotation);
     final sinA = math.sin(-t.rotation);
     final unrotated =
-        Offset(
-          rel.dx * cosA - rel.dy * sinA,
-          rel.dx * sinA + rel.dy * cosA,
-        ) /
+        Offset(rel.dx * cosA - rel.dy * sinA, rel.dx * sinA + rel.dy * cosA) /
         t.scale;
     final local =
         unrotated +

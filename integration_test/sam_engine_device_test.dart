@@ -15,9 +15,9 @@ import 'package:sticker_maker/features/segmentation/engines/object/mobile_sam_en
 /// VmRSS / VmHWM from /proc/self/status, in MB (-1 when unavailable).
 int _procMb(String field) {
   try {
-    final line = File('/proc/self/status')
-        .readAsLinesSync()
-        .firstWhere((l) => l.startsWith('$field:'));
+    final line = File(
+      '/proc/self/status',
+    ).readAsLinesSync().firstWhere((l) => l.startsWith('$field:'));
     return int.parse(line.replaceAll(RegExp(r'[^0-9]'), '')) ~/ 1024;
   } catch (_) {
     return -1;
@@ -42,7 +42,13 @@ void main() {
     final image = img.Image(width: 1536, height: 1024);
     for (var y = 0; y < 1024; y++) {
       for (var x = 0; x < 1536; x++) {
-        image.setPixelRgb(x, y, 40 + (x * 120) ~/ 1536, 60 + (y * 60) ~/ 1024, 90);
+        image.setPixelRgb(
+          x,
+          y,
+          40 + (x * 120) ~/ 1536,
+          60 + (y * 60) ~/ 1024,
+          90,
+        );
       }
     }
     img.fillCircle(

@@ -14,10 +14,7 @@ void main() {
   // Cold launch is the safe moment (no editor open, no undo stacks) to drop
   // orphaned image/mask files — e.g. superseded erase masks (#76).
   unawaited(
-    ProjectRepository().sweepOrphanAssets().then(
-      (_) => 0,
-      onError: (_) => 0,
-    ),
+    ProjectRepository().sweepOrphanAssets().then((_) => 0, onError: (_) => 0),
   );
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(

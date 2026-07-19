@@ -172,7 +172,11 @@ void main() {
     });
 
     test('a lone blob counts as the subject even without a cutout', () {
-      final r = MaskProcessing.removeObjectAt(AlphaMask.filled(6, 6, 255), 3, 3);
+      final r = MaskProcessing.removeObjectAt(
+        AlphaMask.filled(6, 6, 255),
+        3,
+        3,
+      );
       expect(r.outcome, RemoveTapOutcome.subject);
     });
   });

@@ -116,26 +116,29 @@ class MobileSamEngine implements ObjectSegmentationEngine {
     labels[n - 1] = -1; // pad point at (0,0)
 
     final decoder = _decoder ??= await _graphFactory(decoderAsset);
-    final outputs = await decoder.run({
-      'image_embeddings': (
-        data: embedded.embedding,
-        shape: [1, 256, 64, 64],
-      ),
-      'point_coords': (data: coords, shape: [1, n, 2]),
-      'point_labels': (data: labels, shape: [1, n]),
-      'mask_input': (
-        data: Float32List(lowResSide * lowResSide),
-        shape: [1, 1, lowResSide, lowResSide],
-      ),
-      'has_mask_input': (data: Float32List.fromList([0]), shape: [1]),
-      // We never read the full-size `masks` output (megapixel float lists are
-      // slow across the channel) — ask for a tiny one so the graph's final
-      // resize is cheap, and upscale `low_res_masks` ourselves.
-      'orig_im_size': (
-        data: Float32List.fromList([lowResSide.toDouble(), lowResSide.toDouble()]),
-        shape: [2],
-      ),
-    }, ['low_res_masks']);
+    final outputs = await decoder.run(
+      {
+        'image_embeddings': (data: embedded.embedding, shape: [1, 256, 64, 64]),
+        'point_coords': (data: coords, shape: [1, n, 2]),
+        'point_labels': (data: labels, shape: [1, n]),
+        'mask_input': (
+          data: Float32List(lowResSide * lowResSide),
+          shape: [1, 1, lowResSide, lowResSide],
+        ),
+        'has_mask_input': (data: Float32List.fromList([0]), shape: [1]),
+        // We never read the full-size `masks` output (megapixel float lists are
+        // slow across the channel) — ask for a tiny one so the graph's final
+        // resize is cheap, and upscale `low_res_masks` ourselves.
+        'orig_im_size': (
+          data: Float32List.fromList([
+            lowResSide.toDouble(),
+            lowResSide.toDouble(),
+          ]),
+          shape: [2],
+        ),
+      },
+      ['low_res_masks'],
+    );
 
     final logits = outputs['low_res_masks']!;
     return Isolate.run(
@@ -182,12 +185,15 @@ class MobileSamEngine implements ObjectSegmentationEngine {
     // arena is tens of MB we don't want resident.
     final encoder = await _graphFactory(encoderAsset);
     try {
-      final outputs = await encoder.run({
-        'input_image': (
-          data: prepared.hwc,
-          shape: [prepared.resizedH, prepared.resizedW, 3],
-        ),
-      }, ['image_embeddings']);
+      final outputs = await encoder.run(
+        {
+          'input_image': (
+            data: prepared.hwc,
+            shape: [prepared.resizedH, prepared.resizedW, 3],
+          ),
+        },
+        ['image_embeddings'],
+      );
       final embedded = _Embedded(
         embedding: outputs['image_embeddings']!,
         srcW: prepared.srcW,
@@ -212,8 +218,7 @@ class MobileSamEngine implements ObjectSegmentationEngine {
   }
 
   Future<Directory> _cacheDir() async {
-    final base =
-        _cacheDirOverride ?? await getApplicationSupportDirectory();
+    final base = _cacheDirOverride ?? await getApplicationSupportDirectory();
     final dir = Directory('${base.path}/sam_embeddings');
     if (!dir.existsSync()) await dir.create(recursive: true);
     return dir;
@@ -249,10 +254,12 @@ class MobileSamEngine implements ObjectSegmentationEngine {
             e.resizedH,
           ]).buffer.asUint8List(),
         )
-        ..add(e.embedding.buffer.asUint8List(
-          e.embedding.offsetInBytes,
-          e.embedding.lengthInBytes,
-        ));
+        ..add(
+          e.embedding.buffer.asUint8List(
+            e.embedding.offsetInBytes,
+            e.embedding.lengthInBytes,
+          ),
+        );
       await File(
         '${(await _cacheDir()).path}/$key.bin',
       ).writeAsBytes(builder.takeBytes());
@@ -322,9 +329,11 @@ class MobileSamEngine implements ObjectSegmentationEngine {
         final u0 = u.floor().clamp(0, lowResSide - 1);
         final u1 = (u0 + 1).clamp(0, lowResSide - 1);
         final fu = (u - u0).clamp(0.0, 1.0);
-        final top = logits[v0 * lowResSide + u0] * (1 - fu) +
+        final top =
+            logits[v0 * lowResSide + u0] * (1 - fu) +
             logits[v0 * lowResSide + u1] * fu;
-        final bottom = logits[v1 * lowResSide + u0] * (1 - fu) +
+        final bottom =
+            logits[v1 * lowResSide + u0] * (1 - fu) +
             logits[v1 * lowResSide + u1] * fu;
         final logit = top * (1 - fv) + bottom * fv;
         if (logit > 0) alpha[y * srcW + x] = 255;
@@ -368,10 +377,10 @@ class _Embedded {
 
 /// The app's point-prompt engine. Kept as a plain provider (not a family) —
 /// one resident decoder for the whole app.
-final objectSegmentationEngineProvider = Provider<ObjectSegmentationEngine>(
-  (ref) {
-    final engine = MobileSamEngine();
-    ref.onDispose(engine.dispose);
-    return engine;
-  },
-);
+final objectSegmentationEngineProvider = Provider<ObjectSegmentationEngine>((
+  ref,
+) {
+  final engine = MobileSamEngine();
+  ref.onDispose(engine.dispose);
+  return engine;
+});

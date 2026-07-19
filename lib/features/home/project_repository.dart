@@ -138,8 +138,7 @@ class ProjectRepository {
   }
 
   /// Last path segment, tolerant of both `/` and `\` separators.
-  static String _basename(String path) =>
-      path.split('/').last.split('\\').last;
+  static String _basename(String path) => path.split('/').last.split('\\').last;
 }
 
 final projectRepositoryProvider = Provider<ProjectRepository>(

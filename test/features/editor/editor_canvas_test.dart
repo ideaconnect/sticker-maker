@@ -110,7 +110,8 @@ void main() {
     });
     final file = File('${dir.path}/wide.png');
     await tester.runAsync(
-      () => file.writeAsBytes(img.encodePng(img.Image(width: 200, height: 100))),
+      () =>
+          file.writeAsBytes(img.encodePng(img.Image(width: 200, height: 100))),
     );
 
     final c = await pumpCanvas(
@@ -180,10 +181,7 @@ void main() {
     final c = await pumpCanvas(tester, centeredImage());
     await tester.tap(find.byType(EditorCanvas));
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey('layer-delete-handle')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('layer-delete-handle')), findsOneWidget);
 
     c.read(editorControllerProvider.notifier).setTool(EditorTool.erase);
     await tester.pumpAndSettle();

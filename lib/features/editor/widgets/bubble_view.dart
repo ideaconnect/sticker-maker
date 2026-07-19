@@ -17,10 +17,7 @@ Offset bubbleTailTip(BubbleLayer layer, Size size) {
   final body = bubbleBodyRect(size);
   final cx = body.center.dx + layer.tail.dx * (body.width / 2);
   final ty = body.bottom + layer.tail.dy * (size.height - body.bottom);
-  return Offset(
-    cx.clamp(0.0, size.width),
-    ty.clamp(0.0, size.height),
-  );
+  return Offset(cx.clamp(0.0, size.width), ty.clamp(0.0, size.height));
 }
 
 /// The bubble body rect within a box of [size] (upper ~68%, inset).
@@ -207,7 +204,9 @@ class BubblePainter extends CustomPainter {
 
   /// Tail-less rounded narration box (#80).
   static Path _captionBox(Rect body) => Path()
-    ..addRRect(RRect.fromRectAndRadius(body, Radius.circular(body.height * 0.14)));
+    ..addRRect(
+      RRect.fromRectAndRadius(body, Radius.circular(body.height * 0.14)),
+    );
 
   Offset _tailTip(Size size) => bubbleTailTip(layer, size);
 
@@ -218,7 +217,8 @@ class BubblePainter extends CustomPainter {
     if (d.distance < 1) return body.bottomCenter;
     final rx = body.width / 2;
     final ry = body.height / 2;
-    final k = 1 / math.sqrt((d.dx * d.dx) / (rx * rx) + (d.dy * d.dy) / (ry * ry));
+    final k =
+        1 / math.sqrt((d.dx * d.dx) / (rx * rx) + (d.dy * d.dy) / (ry * ry));
     return body.center + d * k;
   }
 

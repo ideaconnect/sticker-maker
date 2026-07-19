@@ -37,40 +37,42 @@ StickerProject _animProj(String id, String word) => StickerProject(
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('exports an ANIMATED pack and hands it to WhatsApp', (
-    tester,
-  ) async {
-    final projects = [
-      _animProj('an_0', 'WOOF'),
-      _animProj('an_1', 'MEOW'),
-      _animProj('an_2', 'YAY'),
-    ];
-    final byId = {for (final p in projects) p.id: p};
-    const pack = StickerPack(
-      id: 'sm_anim_pack',
-      name: 'SM Animated Test',
-      animated: true,
-      stickers: [
-        PackSticker(id: 's0', projectId: 'an_0', emojis: ['🐶']),
-        PackSticker(id: 's1', projectId: 'an_1', emojis: ['🐱']),
-        PackSticker(id: 's2', projectId: 'an_2', emojis: ['🎉']),
-      ],
-    );
+  testWidgets(
+    'exports an ANIMATED pack and hands it to WhatsApp',
+    (tester) async {
+      final projects = [
+        _animProj('an_0', 'WOOF'),
+        _animProj('an_1', 'MEOW'),
+        _animProj('an_2', 'YAY'),
+      ];
+      final byId = {for (final p in projects) p.id: p};
+      const pack = StickerPack(
+        id: 'sm_anim_pack',
+        name: 'SM Animated Test',
+        animated: true,
+        stickers: [
+          PackSticker(id: 's0', projectId: 'an_0', emojis: ['🐶']),
+          PackSticker(id: 's1', projectId: 'an_1', emojis: ['🐱']),
+          PackSticker(id: 's2', projectId: 'an_2', emojis: ['🎉']),
+        ],
+      );
 
-    final installer = WhatsAppPackInstaller();
-    expect(
-      await installer.isWhatsAppInstalled(),
-      isTrue,
-      reason: 'WhatsApp must be installed for this device test',
-    );
+      final installer = WhatsAppPackInstaller();
+      expect(
+        await installer.isWhatsAppInstalled(),
+        isTrue,
+        reason: 'WhatsApp must be installed for this device test',
+      );
 
-    // Renders each sticker as an animated WebP (real FFmpeg encode on-device),
-    // writes contents.json with animated_sticker_pack=true, fires the intent.
-    await installer.addToWhatsApp(pack, byId);
-    // ignore: avoid_print
-    print('ANIM_PACK_INTENT_FIRED');
+      // Renders each sticker as an animated WebP (real FFmpeg encode on-device),
+      // writes contents.json with animated_sticker_pack=true, fires the intent.
+      await installer.addToWhatsApp(pack, byId);
+      // ignore: avoid_print
+      print('ANIM_PACK_INTENT_FIRED');
 
-    // Hold so WhatsApp's dialog is on screen for a screenshot.
-    await Future<void>.delayed(const Duration(seconds: 45));
-  }, timeout: const Timeout(Duration(minutes: 5)));
+      // Hold so WhatsApp's dialog is on screen for a screenshot.
+      await Future<void>.delayed(const Duration(seconds: 45));
+    },
+    timeout: const Timeout(Duration(minutes: 5)),
+  );
 }

@@ -357,7 +357,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     final selected = editor.selectedLayer;
     // Adding a photo/text/bubble is reachable right from the default tool —
     // not only via the Layers tab (#77).
-    final addChip = PillChip(label: 'Add', icon: Icons.add, onTap: _showAddMenu);
+    final addChip = PillChip(
+      label: 'Add',
+      icon: Icons.add,
+      onTap: _showAddMenu,
+    );
     if (selected is! ImageLayer) {
       return Column(
         children: [
@@ -864,23 +868,18 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _segTab(
-                  'Remove object',
-                  removeMode,
-                  AppColors.rose,
-                  () {
-                    setState(() => _removeObjectMode = true);
-                    // Warm the SAM image embedding while the user aims, so
-                    // the first escalated tap only pays the decoder (#85).
-                    if (image != null) {
-                      unawaited(
-                        ref
-                            .read(objectSegmentationEngineProvider)
-                            .precompute(image.assetPath),
-                      );
-                    }
-                  },
-                ),
+                child: _segTab('Remove object', removeMode, AppColors.rose, () {
+                  setState(() => _removeObjectMode = true);
+                  // Warm the SAM image embedding while the user aims, so
+                  // the first escalated tap only pays the decoder (#85).
+                  if (image != null) {
+                    unawaited(
+                      ref
+                          .read(objectSegmentationEngineProvider)
+                          .precompute(image.assetPath),
+                    );
+                  }
+                }),
               ),
             ],
           ),
@@ -1876,11 +1875,8 @@ class _LayerRow extends StatelessWidget {
             File(assetPath),
             fit: BoxFit.cover,
             cacheWidth: 114, // 38 logical px × 3 for high-dpi rows
-            errorBuilder: (_, _, _) => const Icon(
-              Icons.image_outlined,
-              size: 18,
-              color: Colors.white,
-            ),
+            errorBuilder: (_, _, _) =>
+                const Icon(Icons.image_outlined, size: 18, color: Colors.white),
           ),
           if (cut)
             Positioned(

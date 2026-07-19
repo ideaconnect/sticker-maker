@@ -41,18 +41,14 @@ void main() {
   });
   tearDown(() => tmp.deleteSync(recursive: true));
 
-  _FakeGraph encoder() => _FakeGraph(
-    (_) => {
-      'image_embeddings': Float32List(256 * 64 * 64),
-    },
-  );
+  _FakeGraph encoder() =>
+      _FakeGraph((_) => {'image_embeddings': Float32List(256 * 64 * 64)});
 
   /// Decoder whose logits are positive in the top half of the VALID grid
   /// region (valid = resized/4 = 256×128 for the 200×100 photo; top half =
   /// v < 64), i.e. the top half of the source photo.
   _FakeGraph decoder() => _FakeGraph((_) {
-    final logits = Float32List(256 * 256)
-      ..fillRange(0, 256 * 256, -10);
+    final logits = Float32List(256 * 256)..fillRange(0, 256 * 256, -10);
     for (var v = 0; v < 64; v++) {
       for (var u = 0; u < 256; u++) {
         logits[v * 256 + u] = 10;

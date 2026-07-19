@@ -77,10 +77,7 @@ void main() {
       // ~310-logical canvas box on a 2.75× phone.
       expect(stickerDecodeTarget(side: 310, dpr: 2.75), 1024);
       // The user's pinch zoom buys more pixels…
-      expect(
-        stickerDecodeTarget(side: 310, dpr: 2.75, layerScale: 2),
-        1792,
-      );
+      expect(stickerDecodeTarget(side: 310, dpr: 2.75, layerScale: 2), 1792);
       // …but never beyond the 4096 guard, and shrink never below 256.
       expect(stickerDecodeTarget(side: 310, dpr: 2.75, layerScale: 6), 4096);
       expect(stickerDecodeTarget(side: 10, dpr: 1, layerScale: 0.2), 256);
