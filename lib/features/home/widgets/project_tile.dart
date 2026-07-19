@@ -8,8 +8,11 @@ import '../../editor/widgets/sticker_canvas.dart';
 
 /// A saved-sticker card: live canvas preview, GIF/PNG badge, name + layer/frame
 /// count. Tap to open; long‑press for a menu — Open / Rename / Duplicate /
-/// Delete (delete keeps its confirmation). Shared by the Home "Recent" grid
-/// and the "All stickers" screen (#63).
+/// Delete. Shared by the Home "Recent" grid and the "All stickers" screen (#63).
+///
+/// Delete confirmation is owner-handled via [onDelete] (see
+/// `confirmAndDeleteProject`), so the dialog can warn about pack membership —
+/// something this tile can't know.
 class ProjectTile extends StatelessWidget {
   const ProjectTile({
     super.key,
@@ -26,6 +29,9 @@ class ProjectTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onRename;
   final VoidCallback onDuplicate;
+
+  /// Invoked when the user picks Delete; the owner confirms (with a pack-membership
+  /// warning) and cascades via `confirmAndDeleteProject`.
   final VoidCallback onDelete;
 
   @override
@@ -129,7 +135,8 @@ class ProjectTile extends StatelessWidget {
     );
   }
 
-  /// Long-press menu. Open mirrors a plain tap; Delete keeps its confirm.
+  /// Long-press menu. Open mirrors a plain tap; Delete routes to the owner's
+  /// confirm+cascade handler.
   Future<void> _showMenu(BuildContext context) async {
     final choice = await showModalBottomSheet<String>(
       context: context,
@@ -158,7 +165,9 @@ class ProjectTile extends StatelessWidget {
       case 'duplicate':
         onDuplicate();
       case 'delete':
-        if (context.mounted) await _confirmDelete(context);
+        // The owner's handler shows the confirm dialog (with a pack-membership
+        // warning) and cascades — this tile must not confirm on its own.
+        onDelete();
     }
   }
 
@@ -179,36 +188,5 @@ class ProjectTile extends StatelessWidget {
       ),
       onTap: () => Navigator.pop(ctx, value),
     );
-  }
-
-  Future<void> _confirmDelete(BuildContext context) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.panel,
-        title: Text(
-          'Delete "${project.name}"?',
-          style: const TextStyle(
-            fontFamily: AppFonts.display,
-            color: AppColors.textPrimary,
-            fontSize: 17,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: AppColors.rose),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (ok ?? false) onDelete();
   }
 }

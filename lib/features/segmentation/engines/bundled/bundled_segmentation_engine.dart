@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show AssetBundle, rootBundle;
@@ -53,37 +54,32 @@ class BundledSegmentationEngine implements SegmentationEngine {
   @override
   Future<SegmentationResult> segment(SegmentationRequest request) async {
     try {
-      final decoded = img.decodeImage(
-        await File(request.imagePath).readAsBytes(),
-      );
-      if (decoded == null) {
-        throw SegmentationException('could not decode image', engineId: id);
-      }
-      // Squash resize (both dims given) — U²-Net was trained on squashed input.
-      final resized = img.copyResize(
-        decoded,
-        width: config.inputSize,
-        height: config.inputSize,
-      );
-      final input = MaskTensor.packTensor(
-        _rgbBytes(resized, config.inputSize),
-        config.inputSize,
-        config,
-      );
+      final bytes = await File(request.imagePath).readAsBytes();
+      final config = this.config;
+      // Pure-Dart pre-processing (decode → squash-resize → normalize → pack)
+      // runs off the UI isolate — a photo decode + NCHW pack froze the raster
+      // thread so badly the "Working…" spinner couldn't animate. Only the
+      // native [Segmenter.infer] stays on the root isolate (plugins are
+      // root-isolate only). Same pattern as mobile_sam_engine.dart.
+      final prepared = await Isolate.run(() => _prepareInput(bytes, config));
       final segmenter = _segmenter ??= await _segmenterFactory(
         config.assetPath,
       );
-      final output = await segmenter.infer(input, [
+      final output = await segmenter.infer(prepared.tensor, [
         1,
         3,
         config.inputSize,
         config.inputSize,
       ]);
-      final mask = MaskTensor.unpackMask(
-        output,
-        config.inputSize,
-        decoded.width,
-        decoded.height,
+      // Post-processing (min-max normalize + bilinear upscale to the full
+      // photo resolution) is the heaviest pure-Dart pass — also off the UI
+      // isolate. Capture plain ints so the closure doesn't drag the input
+      // tensor back across the isolate boundary.
+      final inputSize = config.inputSize;
+      final srcW = prepared.srcW;
+      final srcH = prepared.srcH;
+      final mask = await Isolate.run(
+        () => MaskTensor.unpackMask(output, inputSize, srcW, srcH),
       );
       return SegmentationResult(mask: mask, engineId: id);
     } on SegmentationException {
@@ -94,6 +90,38 @@ class BundledSegmentationEngine implements SegmentationEngine {
         engineId: id,
       );
     }
+  }
+
+  /// Pure-Dart pre-processing, run via [Isolate.run]: decode → squash resize
+  /// (both dims given — U²-Net was trained on squashed input) → RGB bytes →
+  /// NCHW pack. Static so the [Isolate.run] closure captures only plain
+  /// sendable values ([bytes], [config]), never `this`.
+  static ({Float32List tensor, int srcW, int srcH}) _prepareInput(
+    Uint8List bytes,
+    ModelConfig config,
+  ) {
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      // String-only payload, so it crosses the isolate boundary intact.
+      throw const SegmentationException(
+        'could not decode image',
+        engineId: 'bundled',
+      );
+    }
+    final resized = img.copyResize(
+      decoded,
+      width: config.inputSize,
+      height: config.inputSize,
+    );
+    return (
+      tensor: MaskTensor.packTensor(
+        _rgbBytes(resized, config.inputSize),
+        config.inputSize,
+        config,
+      ),
+      srcW: decoded.width,
+      srcH: decoded.height,
+    );
   }
 
   /// Extracts row-major RGB bytes (3/px) from a decoded [size]×[size] image.

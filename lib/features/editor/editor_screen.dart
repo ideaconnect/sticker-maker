@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show listEquals;
@@ -24,6 +25,7 @@ import '../../core/widgets/pill_chip.dart';
 import '../../core/widgets/sm_toast.dart';
 import '../../core/widgets/tool_tab.dart';
 import '../home/project_repository.dart';
+import '../segmentation/ai_capability.dart';
 import '../segmentation/alpha_mask.dart';
 import '../segmentation/engines/object/mobile_sam_engine.dart';
 import '../segmentation/mask_brush.dart';
@@ -69,6 +71,18 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   bool _removingBg = false; // AI cut-out in progress
   bool _removeObjectMode = false; // tap-to-remove mode in the cutout tool (#83)
   bool _samBusy = false; // MobileSAM object segmentation in progress (#86)
+  // Set when the SAM engine hard-fails (precompute/segmentAt threw): a broken
+  // ORT runtime never heals mid-session, so later taps short-circuit to the
+  // capability toast instead of re-paying the full decode + encoder attempt.
+  bool _samEngineFailed = false;
+
+  /// The honest capability toast — deliberately DISTINCT from the
+  /// tapped-the-subject message, which used to double for this case and sent
+  /// users tapping other objects expecting different results (2026-07-19
+  /// review, low/ai-usage).
+  static const String samUnavailableMessage =
+      "Object removal AI isn't available on this device — "
+      'use the Erase brush instead';
 
   // Working mask cached across strokes of the Erase tool, so we don't reload
   // and decode the mask file on every dab. Keyed by (layerId, maskPath) so an
@@ -873,13 +887,11 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                 child: _segTab('Remove object', removeMode, AppColors.rose, () {
                   setState(() => _removeObjectMode = true);
                   // Warm the SAM image embedding while the user aims, so
-                  // the first escalated tap only pays the decoder (#85).
+                  // the first escalated tap only pays the decoder (#85) —
+                  // skipped entirely on capability-denied devices and after
+                  // a hard engine failure.
                   if (image != null) {
-                    unawaited(
-                      ref
-                          .read(objectSegmentationEngineProvider)
-                          .precompute(image.assetPath),
-                    );
+                    unawaited(_precomputeSamIfAllowed(image.assetPath));
                   }
                 }),
               ),
@@ -1171,10 +1183,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         }
         return;
       }
-      final mask = MaskProcessing.process(
-        result.mask,
-        const MaskProcessingOptions(),
-      );
+      // The clean-up chain crunches every pixel of a photo-sized mask — run it
+      // off the UI isolate so the "Working…" spinner actually animates
+      // (docs/reviews/2026-07-19-review.md).
+      final mask = await _processCutoutMask(result.mask);
       final path = await ref.read(maskStoreProvider).save(mask, id: image.id);
       _controller.setImageMask(image.id, path);
       if (mounted) {
@@ -1289,11 +1301,16 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       );
       final maskPoint = mapper.canvasToMask(pointLogical);
       if (maskPoint == null) return; // missed the photo entirely
-      final result = MaskProcessing.removeObjectAt(
+      // Component labelling + feathered subtract walk the whole mask several
+      // times — off the UI isolate (docs/reviews/2026-07-19-review.md). Still
+      // serialized behind [_strokeLock], so the working mask can't change
+      // underneath the hop.
+      final result = await _removeTappedObject(
         _workingMask!,
         maskPoint.dx.round(),
         maskPoint.dy.round(),
       );
+      if (!mounted) return;
       switch (result.outcome) {
         case RemoveTapOutcome.miss:
           if (mounted) _toast('Nothing to remove there');
@@ -1320,50 +1337,79 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     _controller.setImageMask(layer.id, path);
   }
 
+  /// Warms the SAM embedding for [assetPath] so the first escalated tap only
+  /// pays the decoder (#85). Skipped when the capability gate denies the SAM
+  /// tier (the ~100 MB-transient encoder must never run on low-RAM devices)
+  /// or after a hard engine failure this session; a warm-up throw is itself
+  /// remembered as a hard failure so taps stop retrying a dead runtime.
+  Future<void> _precomputeSamIfAllowed(String assetPath) async {
+    if (_samEngineFailed) return;
+    final capability = await ref.read(aiCapabilityProvider.future);
+    if (!capability.samAllowed) return;
+    try {
+      await ref.read(objectSegmentationEngineProvider).precompute(assetPath);
+    } catch (_) {
+      _samEngineFailed = true;
+    }
+  }
+
   /// Tier 2 (#84/#85/#86): MobileSAM point-prompt segmentation of the tapped
   /// object, subtracted from the cutout. Guarded so a tap on the subject
   /// itself (SAM returning essentially the whole remaining foreground) never
   /// nukes the sticker.
   Future<void> _samRemoveAt(ImageLayer layer, Offset maskPoint) async {
+    // Capability gate first: on denied devices (and after a hard engine
+    // failure) short-circuit before paying any decode/encoder cost, and be
+    // honest that the CAPABILITY is missing — this is not the user's tap.
+    final capability = await ref.read(aiCapabilityProvider.future);
+    if (!capability.samAllowed || _samEngineFailed) {
+      if (mounted) _toast(samUnavailableMessage);
+      return;
+    }
     final engine = ref.read(objectSegmentationEngineProvider);
     if (!await engine.isAvailable()) {
-      if (mounted) {
-        _toast('That looks like your subject — use Erase for fine edits');
-      }
+      if (mounted) _toast(samUnavailableMessage);
       return;
     }
     if (mounted) setState(() => _samBusy = true);
     try {
-      final object = await engine.segmentAt(layer.assetPath, [
-        PromptPoint(maskPoint),
-      ]);
+      final AlphaMask? object;
+      try {
+        object = await engine.segmentAt(layer.assetPath, [
+          PromptPoint(maskPoint),
+        ]);
+      } catch (_) {
+        // A throwing engine (broken ORT runtime, unloadable model) won't heal
+        // this session — remember it so the next tap short-circuits to the
+        // capability toast instead of re-paying the whole attempt. Only the
+        // engine call trips the flag: failures past this point (a transient
+        // mask-save IO error, say) are retryable and must not disable the
+        // tier.
+        _samEngineFailed = true;
+        if (mounted) _toast("Couldn't remove that — try again");
+        return;
+      }
       if (!mounted) return;
       final current = _workingMask;
       if (object == null || current == null) {
         _toast("Couldn't find an object there");
         return;
       }
-      // Overlap with what the cutout currently keeps.
-      var kept = 0;
-      var overlap = 0;
-      for (var i = 0; i < current.length; i++) {
-        if (current.alpha[i] > 16) {
-          kept++;
-          if (object.alpha[i] > 128) overlap++;
-        }
-      }
-      if (overlap == 0) {
+      // Overlap with what the cutout currently keeps — a per-pixel pass over
+      // the full mask, so off the UI isolate (docs/reviews/2026-07-19-review.md).
+      final stats = await _maskOverlap(current, object);
+      if (!mounted) return;
+      if (stats.overlap == 0) {
         _toast("Couldn't find an object there");
         return;
       }
-      if (overlap > kept * 0.8) {
+      if (stats.overlap > stats.kept * 0.8) {
         _toast('That looks like your subject — use Erase for fine edits');
         return;
       }
-      final next = MaskProcessing.subtract(
-        current,
-        MaskProcessing.feather(object, 1),
-      );
+      // Feather + subtract are two more full-mask passes — same treatment.
+      final next = await _subtractObject(current, object);
+      if (!mounted) return;
       await _applyRemovedMask(layer, next);
       if (mounted) _toast('Object removed — undo brings it back');
     } catch (_) {
@@ -2344,3 +2390,50 @@ class _PanelHint extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Off-UI-isolate mask helpers (docs/reviews/2026-07-19-review.md): each runs
+// O(width × height) pixel loops over source-resolution masks, which froze the
+// raster thread when run on the UI isolate. An [AlphaMask] is just ints + a
+// Uint8List, so it crosses isolates cheaply.
+//
+// Each helper owns its [Isolate.run] call ON PURPOSE: the sent closure must be
+// created here, in a scope whose context holds only the helper's parameters.
+// Created inline in a `_EditorScreenState` method it would share that method's
+// closure context with the `setState(() => …)` closures, dragging `this` (the
+// whole State) into the isolate message and failing to send at runtime.
+
+/// Full clean-up chain for a fresh AI cut-out result.
+Future<AlphaMask> _processCutoutMask(AlphaMask raw) => Isolate.run(
+  () => MaskProcessing.process(raw, const MaskProcessingOptions()),
+);
+
+/// Tier-1 tap-to-remove: component labelling + feathered subtract (#83).
+Future<({RemoveTapOutcome outcome, AlphaMask? mask})> _removeTappedObject(
+  AlphaMask mask,
+  int x,
+  int y,
+) => Isolate.run(() => MaskProcessing.removeObjectAt(mask, x, y));
+
+/// How much of what the cutout currently keeps ([current] > 16) the SAM
+/// [object] (> 128) covers — drives the "that's your subject" guard (#86).
+Future<({int kept, int overlap})> _maskOverlap(
+  AlphaMask current,
+  AlphaMask object,
+) => Isolate.run(() {
+  var kept = 0;
+  var overlap = 0;
+  for (var i = 0; i < current.length; i++) {
+    if (current.alpha[i] > 16) {
+      kept++;
+      if (object.alpha[i] > 128) overlap++;
+    }
+  }
+  return (kept: kept, overlap: overlap);
+});
+
+/// Subtracts the SAM [object] (with a 1-px feathered seam) from [current].
+Future<AlphaMask> _subtractObject(AlphaMask current, AlphaMask object) =>
+    Isolate.run(
+      () => MaskProcessing.subtract(current, MaskProcessing.feather(object, 1)),
+    );

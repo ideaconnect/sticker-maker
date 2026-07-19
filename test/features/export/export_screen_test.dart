@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sticker_maker/core/models/frame.dart';
 import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
+import 'package:sticker_maker/core/platform/platform_services.dart';
 import 'package:sticker_maker/core/theme/app_theme.dart';
 import 'package:sticker_maker/features/editor/state/editor_controller.dart';
 import 'package:sticker_maker/features/export/animated_export_service.dart';
@@ -57,6 +59,48 @@ class _FakeAnimatedExport extends AnimatedExportService {
     size: 512,
     format: spec.format,
   );
+}
+
+/// Counts encodes and holds the webm (Telegram) result behind a gate so tests
+/// can interleave a slow estimate with a fast one. WebP resolves immediately
+/// with 3 bytes; webm waits for [webmGate] and returns 5 bytes.
+class _RacingAnimatedExport extends AnimatedExportService {
+  final webmGate = Completer<void>();
+  int webmEncodes = 0;
+  int webpEncodes = 0;
+
+  @override
+  Future<EncodedSticker> encode(
+    StickerProject project,
+    AnimationSpec spec, {
+    double fps = 12,
+  }) async {
+    if (spec.format == 'webm') {
+      webmEncodes++;
+      await webmGate.future;
+      return EncodedSticker(bytes: Uint8List(5), size: 512, format: 'webm');
+    }
+    webpEncodes++;
+    return EncodedSticker(bytes: Uint8List(3), size: 512, format: 'webp');
+  }
+}
+
+/// Captures saveToDownloads calls so the download flow runs without the
+/// platform channel.
+class _FakePlatformServices extends PlatformServices {
+  int saveCalls = 0;
+  Uint8List? savedBytes;
+
+  @override
+  Future<String?> saveToDownloads(
+    String fileName,
+    String mimeType,
+    Uint8List bytes,
+  ) async {
+    saveCalls++;
+    savedBytes = bytes;
+    return 'Downloads/$fileName';
+  }
 }
 
 void main() {
@@ -191,4 +235,86 @@ void main() {
       expect(find.text('Add to WhatsApp'), findsOneWidget);
     },
   );
+
+  testWidgets('a stale slow estimate never overwrites a fresh fast one', (
+    tester,
+  ) async {
+    final service = _RacingAnimatedExport();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          editorControllerProvider.overrideWith(
+            () => EditorController(_animatedProject),
+          ),
+          animatedExportServiceProvider.overrideWithValue(service),
+        ],
+        child: MaterialApp(
+          theme: buildStickerTheme(),
+          home: const ExportScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Screen entry fired the (gated, slow) Telegram webm estimate.
+    expect(service.webmEncodes, 1);
+    expect(find.textContaining('Estimating'), findsOneWidget);
+
+    // Switching to WhatsApp fires a fast webp estimate that lands first.
+    await tester.tap(find.text('WhatsApp'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('~3 B · WEBP'), findsOneWidget);
+
+    // The stale telegram encode completes AFTER — it must be discarded, not
+    // overwrite the fresh label.
+    service.webmGate.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('~3 B · WEBP'), findsOneWidget);
+    expect(find.textContaining('WEBM'), findsNothing);
+    expect(find.textContaining('Estimating'), findsNothing);
+  });
+
+  testWidgets('download reuses the estimate encode instead of re-encoding', (
+    tester,
+  ) async {
+    final service = _RacingAnimatedExport()..webmGate.complete();
+    final platform = _FakePlatformServices();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          editorControllerProvider.overrideWith(
+            () => EditorController(_animatedProject),
+          ),
+          animatedExportServiceProvider.overrideWithValue(service),
+          platformServicesProvider.overrideWithValue(platform),
+        ],
+        child: MaterialApp(
+          theme: buildStickerTheme(),
+          home: const ExportScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The entry estimate paid for one full (telegram webm) encode.
+    expect(find.text('~5 B · WEBM'), findsOneWidget);
+    expect(service.webmEncodes, 1);
+
+    await tester.ensureVisible(find.text('Download'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Download'));
+    await tester.pumpAndSettle();
+
+    // Same target/toggle/project revision → the cached bytes are reused.
+    expect(service.webmEncodes, 1, reason: 'no second encode for the export');
+    expect(platform.saveCalls, 1);
+    expect(platform.savedBytes, hasLength(5));
+    expect(find.textContaining('Saved to Downloads/'), findsOneWidget);
+
+    // Let the toast's hold timer and exit animation finish.
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+  });
 }
