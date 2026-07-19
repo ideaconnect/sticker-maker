@@ -28,6 +28,14 @@ android {
             "tech.idct.stickermaker.stickercontentprovider"
     }
 
+    testOptions {
+        unitTests {
+            // Robolectric needs the merged manifest + resources on the JVM
+            // test classpath (StickerContentProviderTest).
+            isIncludeAndroidResources = true
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
@@ -55,4 +63,21 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // JVM unit tests for the WhatsApp StickerContentProvider (Robolectric).
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation("androidx.test:core:1.7.0")
+}
+
+// With isIncludeAndroidResources, AGP's package<Variant>UnitTestForUnitTest
+// reads the merged assets dir that Flutter's copyFlutterAssets<Variant> also
+// writes into; Gradle 9 fails the build unless that dependency is explicit.
+tasks.configureEach {
+    val match = Regex("package(.+)UnitTestForUnitTest").matchEntire(name)
+    if (match != null) {
+        dependsOn("copyFlutterAssets${match.groupValues[1]}")
+    }
 }

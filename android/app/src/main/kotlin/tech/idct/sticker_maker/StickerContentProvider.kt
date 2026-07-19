@@ -65,11 +65,29 @@ class StickerContentProvider : ContentProvider() {
         if (matcher.match(uri) != CODE_ASSET) return null
         val segments = uri.pathSegments // [stickers_asset, packId, fileName]
         if (segments.size != 3) return null
-        val file = File(File(exportRoot, segments[1]), segments[2])
-        if (!file.exists()) return null
-        val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        val packId = segments[1]
+        val fileName = segments[2]
+        // The exporter only writes plain names under wa_export; reject anything
+        // traversal-shaped ('..', separators) — the provider is exported, so it
+        // must never serve files outside its own export tree.
+        if (!isSafeSegment(packId) || !isSafeSegment(fileName)) return null
+        val file = File(File(exportRoot, packId), fileName)
+        // Belt and braces: the resolved canonical path must stay under wa_export.
+        val canonical = file.canonicalFile
+        if (!canonical.toPath().startsWith(exportRoot.canonicalFile.toPath())) return null
+        if (!canonical.exists()) return null
+        val pfd = ParcelFileDescriptor.open(canonical, ParcelFileDescriptor.MODE_READ_ONLY)
         return AssetFileDescriptor(pfd, 0, AssetFileDescriptor.UNKNOWN_LENGTH)
     }
+
+    /** True for a plain file/dir name: non-empty, no '..', no path separators. */
+    private fun isSafeSegment(segment: String): Boolean =
+        segment.isNotEmpty() &&
+            segment != "." &&
+            !segment.contains("..") &&
+            !segment.contains('/') &&
+            !segment.contains('\\') &&
+            !segment.contains('\u0000')
 
     // ---- pack data (read from the Flutter-generated contents.json) ----
 
