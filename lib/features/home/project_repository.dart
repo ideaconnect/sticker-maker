@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/models/frame.dart';
+import '../../core/models/layer.dart';
 import '../../core/models/sticker_project.dart';
 
 /// Persists [StickerProject]s as JSON manifests under the app documents
@@ -57,6 +59,50 @@ class ProjectRepository {
     final map = (jsonDecode(await file.readAsString()) as Map)
         .cast<String, dynamic>();
     return StickerProject.fromJson(map);
+  }
+
+  /// Saves a deep copy of project [id] under fresh ids — a new project id and
+  /// new ids for every frame and layer — named `<old> copy`. Image/mask files
+  /// are shared with the source, never re-copied: [sweepOrphanAssets]
+  /// refcounts paths across all manifests, so a shared file survives until the
+  /// last project referencing it is gone. Returns the copy, or null when the
+  /// source manifest is missing/corrupt.
+  Future<StickerProject?> duplicate(String id, {DateTime? now}) async {
+    final StickerProject? source;
+    try {
+      source = await load(id);
+    } catch (_) {
+      return null; // unreadable manifest — nothing to duplicate
+    }
+    if (source == null) return null;
+    final at = now ?? DateTime.now();
+    final newId = 'sm_${at.microsecondsSinceEpoch}';
+    var layerSeq = 0;
+    Layer freshLayer(Layer layer) {
+      final layerId = '${newId}_l${layerSeq++}';
+      return switch (layer) {
+        ImageLayer() => layer.copyWith(id: layerId),
+        TextLayer() => layer.copyWith(id: layerId),
+        BubbleLayer() => layer.copyWith(id: layerId),
+      };
+    }
+
+    final copy = StickerProject(
+      id: newId,
+      name: '${source.name} copy',
+      currentFrameIndex: source.currentFrameIndex,
+      createdAt: at,
+      updatedAt: at,
+      frames: [
+        for (final (i, frame) in source.frames.indexed)
+          Frame(
+            id: '${newId}_f$i',
+            layers: frame.layers.map(freshLayer).toList(),
+          ),
+      ],
+    );
+    await save(copy);
+    return copy;
   }
 
   Future<void> delete(String id) async {

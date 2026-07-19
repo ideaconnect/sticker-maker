@@ -7,20 +7,25 @@ import '../../../core/widgets/checkerboard.dart';
 import '../../editor/widgets/sticker_canvas.dart';
 
 /// A saved-sticker card: live canvas preview, GIF/PNG badge, name + layer/frame
-/// count. Tap to open; long‑press to delete (with confirmation). Shared by the
-/// Home "Recent" grid and the "All stickers" screen (#63).
+/// count. Tap to open; long‑press for a menu — Open / Rename / Duplicate /
+/// Delete (delete keeps its confirmation). Shared by the Home "Recent" grid
+/// and the "All stickers" screen (#63).
 class ProjectTile extends StatelessWidget {
   const ProjectTile({
     super.key,
     required this.project,
     required this.radius,
     required this.onTap,
+    required this.onRename,
+    required this.onDuplicate,
     required this.onDelete,
   });
 
   final StickerProject project;
   final double radius;
   final VoidCallback onTap;
+  final VoidCallback onRename;
+  final VoidCallback onDuplicate;
   final VoidCallback onDelete;
 
   @override
@@ -38,7 +43,7 @@ class ProjectTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(radius),
         onTap: onTap,
-        onLongPress: () => _confirmDelete(context),
+        onLongPress: () => _showMenu(context),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: AppColors.card,
@@ -121,6 +126,58 @@ class ProjectTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Long-press menu. Open mirrors a plain tap; Delete keeps its confirm.
+  Future<void> _showMenu(BuildContext context) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _menuTile(ctx, Icons.open_in_full, 'Open', 'open'),
+            _menuTile(ctx, Icons.drive_file_rename_outline, 'Rename', 'rename'),
+            _menuTile(ctx, Icons.content_copy, 'Duplicate', 'duplicate'),
+            _menuTile(ctx, Icons.delete_outline, 'Delete', 'delete'),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    switch (choice) {
+      case 'open':
+        onTap();
+      case 'rename':
+        onRename();
+      case 'duplicate':
+        onDuplicate();
+      case 'delete':
+        if (context.mounted) await _confirmDelete(context);
+    }
+  }
+
+  Widget _menuTile(
+    BuildContext ctx,
+    IconData icon,
+    String label,
+    String value,
+  ) {
+    return ListTile(
+      leading: Icon(icon, color: AppColors.textSecondary),
+      title: Text(
+        label,
+        style: const TextStyle(
+          fontFamily: AppFonts.ui,
+          color: AppColors.textPrimary,
+        ),
+      ),
+      onTap: () => Navigator.pop(ctx, value),
     );
   }
 

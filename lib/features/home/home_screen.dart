@@ -10,6 +10,7 @@ import '../../core/models/sticker_project.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
+import '../../core/widgets/name_prompt.dart';
 import '../../core/widgets/responsive_center.dart';
 import '../about/about_sheet.dart';
 import '../editor/state/editor_controller.dart';
@@ -64,6 +65,33 @@ class HomeScreen extends ConsumerWidget {
 
   Future<void> _deleteProject(WidgetRef ref, String id) async {
     await ref.read(projectRepositoryProvider).delete(id);
+    ref.invalidate(savedProjectsProvider);
+  }
+
+  /// Renames a saved sticker in place: dialog → load → copyWith(name) → save.
+  /// A cancelled or blank dialog keeps the old name.
+  Future<void> _renameProject(
+    BuildContext context,
+    WidgetRef ref,
+    StickerProject p,
+  ) async {
+    final name = await promptName(
+      context,
+      title: 'Rename sticker',
+      initial: p.name,
+      hint: 'Sticker name',
+    );
+    if (name == null) return;
+    final repo = ref.read(projectRepositoryProvider);
+    final current = await repo.load(p.id) ?? p;
+    await repo.save(current.copyWith(name: name, updatedAt: DateTime.now()));
+    ref.invalidate(savedProjectsProvider);
+  }
+
+  /// Saves a deep copy (`<name> copy`, fresh ids, shared asset files) and
+  /// refreshes the grid.
+  Future<void> _duplicateProject(WidgetRef ref, StickerProject p) async {
+    await ref.read(projectRepositoryProvider).duplicate(p.id);
     ref.invalidate(savedProjectsProvider);
   }
 
@@ -161,6 +189,8 @@ class HomeScreen extends ConsumerWidget {
                               project: p,
                               radius: tokens.radiusCard,
                               onTap: () => _openProject(context, ref, p),
+                              onRename: () => _renameProject(context, ref, p),
+                              onDuplicate: () => _duplicateProject(ref, p),
                               onDelete: () => _deleteProject(ref, p.id),
                             ),
                         ],
