@@ -80,11 +80,18 @@ flutter:
   assets:
     - assets/branding/
     # On-device segmentation fallback weights (#28): the bundled U²-Netp ONNX.
-    # Bundled as a single file (not the whole dir) so conversion sources never
-    # ship — the .pth checkpoints live in model_conversion/, out of the bundle.
+    # Bundled as single files (never the whole dir) so conversion sources —
+    # the .pt/.pth checkpoints — never ship in the app bundle.
     - assets/models/u2netp.onnx
+    # MobileSAM point-prompt object removal (#84): encoder runs once per
+    # photo, decoder per tap. Apache-2.0, converted by
+    # model_conversion/convert_mobile_sam.py.
+    - assets/models/mobile_sam_encoder.onnx
+    - assets/models/mobile_sam_decoder.onnx
     # FFmpeg (animated encoders, #66) is LGPL — its license text ships in-app.
     - assets/licenses/LGPL-3.0-ffmpeg.txt
+    # Bundled AI model licenses (MobileSAM + U²-Netp, Apache-2.0, #84).
+    - assets/licenses/Apache-2.0-models.txt
     # Bundled font license texts — shipped in-app (registered into
     # LicenseRegistry) as SIL OFL / Apache-2.0 require. See about/bundled_licenses.dart.
     - assets/fonts/OFL-PlusJakartaSans.txt

@@ -30,6 +30,13 @@ const bundledLicenses = <BundledLicense>[
   BundledLicense([
     'FFmpeg (ffmpeg-kit video build)',
   ], 'assets/licenses/LGPL-3.0-ffmpeg.txt'),
+  // Bundled on-device AI models (#84): MobileSAM (tap-to-remove) and U²-Netp
+  // (background removal), both Apache-2.0 — attribution + license text ship
+  // in-app as the license requires.
+  BundledLicense([
+    'MobileSAM',
+    'U²-Netp',
+  ], 'assets/licenses/Apache-2.0-models.txt'),
 ];
 
 /// Registers the bundled font license texts into [LicenseRegistry] so they

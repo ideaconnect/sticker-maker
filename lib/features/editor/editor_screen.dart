@@ -24,6 +24,7 @@ import '../../core/widgets/sm_toast.dart';
 import '../../core/widgets/tool_tab.dart';
 import '../home/project_repository.dart';
 import '../segmentation/alpha_mask.dart';
+import '../segmentation/engines/object/mobile_sam_engine.dart';
 import '../segmentation/mask_brush.dart';
 import '../segmentation/mask_processing.dart';
 import '../segmentation/mask_store.dart';
@@ -66,6 +67,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   double _brushSize = 40;
   bool _removingBg = false; // AI cut-out in progress
   bool _removeObjectMode = false; // tap-to-remove mode in the cutout tool (#83)
+  bool _samBusy = false; // MobileSAM object segmentation in progress (#86)
 
   // Working mask cached across strokes of the Erase tool, so we don't reload
   // and decode the mask file on every dab. Keyed by (layerId, maskPath) so an
@@ -239,6 +241,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                     ),
                     if (_hasCutout(editor)) const _CutBadge(),
                     if (_removingBg) const _RemovingOverlay(),
+                    if (_samBusy)
+                      const _RemovingOverlay(label: 'Finding the object…'),
                     // Which frame you're editing — shown in every tool while the
                     // project is animated (per-frame editing indicator, #36).
                     if (editor.project.frameCount > 1)
@@ -864,7 +868,18 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
                   'Remove object',
                   removeMode,
                   AppColors.rose,
-                  () => setState(() => _removeObjectMode = true),
+                  () {
+                    setState(() => _removeObjectMode = true);
+                    // Warm the SAM image embedding while the user aims, so
+                    // the first escalated tap only pays the decoder (#85).
+                    if (image != null) {
+                      unawaited(
+                        ref
+                            .read(objectSegmentationEngineProvider)
+                            .precompute(image.assetPath),
+                      );
+                    }
+                  },
                 ),
               ),
             ],
@@ -1282,22 +1297,78 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         case RemoveTapOutcome.miss:
           if (mounted) _toast('Nothing to remove there');
         case RemoveTapOutcome.subject:
-          if (mounted) {
-            _toast('That looks like your subject — use Erase for fine edits');
-          }
+          // The tapped blob IS (or touches) the biggest one — the free CC
+          // tier can't carve an attached object out. Escalate to the
+          // point-prompt model (#86): tap coords are already source px.
+          await _samRemoveAt(layer, maskPoint);
         case RemoveTapOutcome.removed:
-          final next = result.mask!;
-          _workingMask = next;
-          final path = await ref
-              .read(maskStoreProvider)
-              .save(next, id: layer.id);
-          if (!mounted) return;
-          _workingMaskPath = path;
-          _controller.setImageMask(layer.id, path);
-          _toast('Object removed — undo brings it back');
+          await _applyRemovedMask(layer, result.mask!);
+          if (mounted) _toast('Object removed — undo brings it back');
       }
     } catch (_) {
       if (mounted) _toast("Couldn't remove that — try again");
+    }
+  }
+
+  /// Persists [next] as the layer's mask — shared by both removal tiers.
+  Future<void> _applyRemovedMask(ImageLayer layer, AlphaMask next) async {
+    _workingMask = next;
+    final path = await ref.read(maskStoreProvider).save(next, id: layer.id);
+    if (!mounted) return;
+    _workingMaskPath = path;
+    _controller.setImageMask(layer.id, path);
+  }
+
+  /// Tier 2 (#84/#85/#86): MobileSAM point-prompt segmentation of the tapped
+  /// object, subtracted from the cutout. Guarded so a tap on the subject
+  /// itself (SAM returning essentially the whole remaining foreground) never
+  /// nukes the sticker.
+  Future<void> _samRemoveAt(ImageLayer layer, Offset maskPoint) async {
+    final engine = ref.read(objectSegmentationEngineProvider);
+    if (!await engine.isAvailable()) {
+      if (mounted) {
+        _toast('That looks like your subject — use Erase for fine edits');
+      }
+      return;
+    }
+    if (mounted) setState(() => _samBusy = true);
+    try {
+      final object = await engine.segmentAt(layer.assetPath, [
+        PromptPoint(maskPoint),
+      ]);
+      if (!mounted) return;
+      final current = _workingMask;
+      if (object == null || current == null) {
+        _toast("Couldn't find an object there");
+        return;
+      }
+      // Overlap with what the cutout currently keeps.
+      var kept = 0;
+      var overlap = 0;
+      for (var i = 0; i < current.length; i++) {
+        if (current.alpha[i] > 16) {
+          kept++;
+          if (object.alpha[i] > 128) overlap++;
+        }
+      }
+      if (overlap == 0) {
+        _toast("Couldn't find an object there");
+        return;
+      }
+      if (overlap > kept * 0.8) {
+        _toast('That looks like your subject — use Erase for fine edits');
+        return;
+      }
+      final next = MaskProcessing.subtract(
+        current,
+        MaskProcessing.feather(object, 1),
+      );
+      await _applyRemovedMask(layer, next);
+      if (mounted) _toast('Object removed — undo brings it back');
+    } catch (_) {
+      if (mounted) _toast("Couldn't remove that — try again");
+    } finally {
+      if (mounted) setState(() => _samBusy = false);
     }
   }
 
@@ -1985,17 +2056,19 @@ class _CutBadge extends StatelessWidget {
 
 /// Full-canvas overlay shown while the AI cut-out runs.
 class _RemovingOverlay extends StatelessWidget {
-  const _RemovingOverlay();
+  const _RemovingOverlay({this.label = 'Removing background…'});
+
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    return const Positioned.fill(
+    return Positioned.fill(
       child: ColoredBox(
-        color: Color(0xB2131019),
+        color: const Color(0xB2131019),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SizedBox(
+            const SizedBox(
               width: 34,
               height: 34,
               child: CircularProgressIndicator(
@@ -2003,10 +2076,10 @@ class _RemovingOverlay extends StatelessWidget {
                 valueColor: AlwaysStoppedAnimation(AppColors.greenLight),
               ),
             ),
-            SizedBox(height: 14),
+            const SizedBox(height: 14),
             Text(
-              'Removing background…',
-              style: TextStyle(
+              label,
+              style: const TextStyle(
                 fontFamily: AppFonts.ui,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
