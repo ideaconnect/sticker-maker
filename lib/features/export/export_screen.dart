@@ -45,6 +45,16 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
   String? _sizeFormat; // upper-case format of the last estimate (PNG/WEBM/…)
   bool _initialized = false;
 
+  /// Monotonic id of the latest estimate request. Estimates can interleave
+  /// (encodes take seconds); only the request that still owns this generation
+  /// may write the label, so a slow stale encode never clobbers a fresh one.
+  int _estimateGen = 0;
+
+  /// Last successful encode, keyed by (target, Static/Animated toggle, project
+  /// revision). The size estimate already paid for a full encode — export and
+  /// download reuse those bytes instead of encoding the same thing again.
+  ({(String, bool, DateTime?) key, EncodedSticker sticker})? _lastEncode;
+
   static const _targets = <_Target>[
     _Target(
       'telegram',
@@ -128,20 +138,46 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     return StickerEncoder.png(project.currentFrame, size: _pngSize());
   }
 
-  /// Re-encodes the current selection to show a real size estimate.
+  /// Cache key for one encoded result. [_encode] is deterministic for a given
+  /// target + Static/Animated toggle + project revision (updatedAt is bumped on
+  /// every save), so a matching key means the bytes are still valid.
+  (String, bool, DateTime?) _encodeKey(StickerProject project) =>
+      (_target, _animated, project.updatedAt);
+
+  /// [_encode] with a single-entry result cache: when the key still matches
+  /// (same target/toggle/revision) the previous bytes are reused, so the
+  /// export/download tap doesn't re-pay for the encode the estimate already
+  /// ran. The key is captured before the await — [_encode] reads the target
+  /// state synchronously, so the result belongs to the captured key even if
+  /// the user switches targets mid-encode.
+  Future<EncodedSticker> _encodeCached(StickerProject project) async {
+    final key = _encodeKey(project);
+    final cached = _lastEncode;
+    if (cached != null && cached.key == key) return cached.sticker;
+    final sticker = await _encode(project);
+    _lastEncode = (key: key, sticker: sticker);
+    return sticker;
+  }
+
+  /// Encodes the current selection to show a real size estimate (the result is
+  /// cached and reused by the actual export). Guarded by [_estimateGen]: on
+  /// BOTH the success and the failure path a stale completion is discarded —
+  /// a stale error resetting the label would otherwise pin "Estimating…" over
+  /// a fresh result.
   Future<void> _updateEstimate() async {
+    final gen = ++_estimateGen;
     setState(() => _sizeLabel = null);
     final project = ref.read(editorControllerProvider).project;
     try {
-      final sticker = await _encode(project);
-      if (mounted) {
-        setState(() {
-          _sizeLabel = _formatBytes(sticker.byteLength);
-          _sizeFormat = sticker.format.toUpperCase();
-        });
-      }
+      final sticker = await _encodeCached(project);
+      if (!mounted || gen != _estimateGen) return;
+      setState(() {
+        _sizeLabel = _formatBytes(sticker.byteLength);
+        _sizeFormat = sticker.format.toUpperCase();
+      });
     } catch (_) {
-      if (mounted) setState(() => _sizeLabel = null);
+      if (!mounted || gen != _estimateGen) return;
+      setState(() => _sizeLabel = null);
     }
   }
 
@@ -157,7 +193,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     setState(() => _exporting = true);
     try {
       final project = ref.read(editorControllerProvider).project;
-      final sticker = await _encode(project);
+      final sticker = await _encodeCached(project);
       final dir = await getTemporaryDirectory();
       final name = _sanitize(project.name);
       final file = File(
@@ -220,7 +256,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     setState(() => _exporting = true);
     try {
       final project = ref.read(editorControllerProvider).project;
-      final sticker = await _encode(project);
+      final sticker = await _encodeCached(project);
       final name =
           '${_sanitize(project.name)}_${DateTime.now().millisecondsSinceEpoch}'
           '.${sticker.format}';
