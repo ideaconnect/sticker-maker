@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/frame.dart';
 import '../../core/models/layer.dart';
 import '../../core/rendering/color_matrix.dart';
+import '../../core/rendering/sticker_geometry.dart';
 import '../../core/theme/app_colors.dart';
 import '../editor/widgets/bubble_view.dart';
 
@@ -92,7 +93,7 @@ abstract final class StickerRenderer {
   ) {
     final base = decoded[layer.assetPath];
     if (base == null) return; // missing source file → nothing to export
-    final boxSide = 440.0 * scale;
+    final boxSide = kStickerFitBoxSide * scale;
     final box = Rect.fromCenter(
       center: Offset.zero,
       width: boxSide,
