@@ -114,6 +114,24 @@ abstract interface class AnimationEncoder {
     required int quality,
     required bool loop,
   });
+
+  /// Prepares [frames] once for repeated [AnimationEncodeSession.encode] calls
+  /// at different qualities (the byte-budget search): the expensive per-frame
+  /// preprocessing (e.g. the ffmpeg PNG scratch sequence) happens here, not per
+  /// rung. Callers own the session and must [AnimationEncodeSession.dispose].
+  Future<AnimationEncodeSession> prepare(List<RgbaFrame> frames);
+}
+
+/// A prepared set of frames that can be encoded at many qualities. Obtained
+/// from [AnimationEncoder.prepare]; each [encode] re-runs only the codec pass.
+abstract interface class AnimationEncodeSession {
+  /// Encodes the prepared frames at [quality] (same knob as
+  /// [AnimationEncoder.encode]).
+  Future<Uint8List> encode({required int quality, required bool loop});
+
+  /// Releases scratch resources (temp dirs, native handles). Safe to call more
+  /// than once; the session is unusable afterwards.
+  Future<void> dispose();
 }
 
 /// An encoded animation plus the quality-knob value that produced it.
@@ -136,6 +154,10 @@ class BudgetedEncode {
 /// [qualities] (best first) and returns the first encode within
 /// [spec].maxBytes, else the last (smallest) attempt flagged out-of-budget.
 ///
+/// The frames are [AnimationEncoder.prepare]d ONCE for the whole search — the
+/// per-frame preprocessing is identical across rungs, so only the codec pass
+/// re-runs per quality.
+///
 /// Both platforms pin the 512-px edge exactly, so unlike the static-sticker
 /// budget search this NEVER downscales — quality/bitrate is the only variable.
 Future<BudgetedEncode> encodeWithinBudget(
@@ -145,16 +167,29 @@ Future<BudgetedEncode> encodeWithinBudget(
   required List<int> qualities,
 }) async {
   assert(qualities.isNotEmpty, 'need at least one quality rung');
-  late Uint8List last;
-  late int lastQuality;
-  for (final quality in qualities) {
-    last = await encoder.encode(frames, quality: quality, loop: spec.loop);
-    lastQuality = quality;
-    if (last.length <= spec.maxBytes) {
-      return BudgetedEncode(bytes: last, quality: quality, withinBudget: true);
+  final session = await encoder.prepare(frames);
+  try {
+    late Uint8List last;
+    late int lastQuality;
+    for (final quality in qualities) {
+      last = await session.encode(quality: quality, loop: spec.loop);
+      lastQuality = quality;
+      if (last.length <= spec.maxBytes) {
+        return BudgetedEncode(
+          bytes: last,
+          quality: quality,
+          withinBudget: true,
+        );
+      }
     }
+    return BudgetedEncode(
+      bytes: last,
+      quality: lastQuality,
+      withinBudget: false,
+    );
+  } finally {
+    await session.dispose();
   }
-  return BudgetedEncode(bytes: last, quality: lastQuality, withinBudget: false);
 }
 
 /// Quality ladders per target (best first). Telegram's knob is VP9 bitrate in
@@ -183,7 +218,8 @@ List<int> telegramBitrateLadderFor(
 const whatsappQualityLadder = <int>[80, 70, 60, 50, 40, 30];
 
 /// Test double: records the last call and returns canned bytes whose length is
-/// `frameCount * quality` so byte-budget searches are deterministic.
+/// `frameCount * quality` so byte-budget searches are deterministic. Counts
+/// [prepare]/session activity so tests can prove frames are prepared once.
 class FakeAnimationEncoder implements AnimationEncoder {
   FakeAnimationEncoder({
     this.id = 'fake',
@@ -199,6 +235,9 @@ class FakeAnimationEncoder implements AnimationEncoder {
 
   int? lastQuality;
   int? lastFrameCount;
+  int prepareCalls = 0;
+  int sessionEncodeCalls = 0;
+  int disposeCalls = 0;
 
   @override
   Future<bool> isAvailable() async => available;
@@ -212,5 +251,29 @@ class FakeAnimationEncoder implements AnimationEncoder {
     lastQuality = quality;
     lastFrameCount = frames.length;
     return Uint8List(frames.length * quality);
+  }
+
+  @override
+  Future<AnimationEncodeSession> prepare(List<RgbaFrame> frames) async {
+    prepareCalls++;
+    return _FakeAnimationEncodeSession(this, frames);
+  }
+}
+
+class _FakeAnimationEncodeSession implements AnimationEncodeSession {
+  _FakeAnimationEncodeSession(this._encoder, this._frames);
+
+  final FakeAnimationEncoder _encoder;
+  final List<RgbaFrame> _frames;
+
+  @override
+  Future<Uint8List> encode({required int quality, required bool loop}) {
+    _encoder.sessionEncodeCalls++;
+    return _encoder.encode(_frames, quality: quality, loop: loop);
+  }
+
+  @override
+  Future<void> dispose() async {
+    _encoder.disposeCalls++;
   }
 }

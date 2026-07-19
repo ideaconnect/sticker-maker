@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -56,6 +57,76 @@ void main() {
     File('${dir.path}/projects/broken.json').writeAsStringSync('{ not json');
     final list = await repo.list();
     expect(list.map((p) => p.id), ['good']);
+  });
+
+  test('save leaves no .tmp behind and the manifest parses', () async {
+    await repo.save(project('alpha'));
+
+    final leftovers = Directory(
+      '${dir.path}/projects',
+    ).listSync().whereType<File>().where((f) => f.path.endsWith('.tmp'));
+    expect(leftovers, isEmpty);
+
+    final raw = File('${dir.path}/projects/alpha.json').readAsStringSync();
+    final decoded = (jsonDecode(raw) as Map).cast<String, dynamic>();
+    expect(StickerProject.fromJson(decoded).id, 'alpha');
+  });
+
+  test('save atomically replaces an existing manifest', () async {
+    await repo.save(project('alpha'));
+    await repo.save(project('alpha', updated: DateTime.utc(2026, 5)));
+    final loaded = await repo.load('alpha');
+    expect(loaded!.updatedAt, DateTime.utc(2026, 5));
+    expect(File('${dir.path}/projects/alpha.json.tmp').existsSync(), isFalse);
+  });
+
+  test('list quarantines a truncated manifest to .json.corrupt', () async {
+    await repo.save(project('good'));
+    // A save killed mid-write: truncated JSON under the real id.
+    File(
+      '${dir.path}/projects/torn.json',
+    ).writeAsStringSync('{"id":"torn","na');
+
+    final list = await repo.list();
+
+    expect(list.map((p) => p.id), ['good']);
+    expect(File('${dir.path}/projects/torn.json').existsSync(), isFalse);
+    expect(
+      File('${dir.path}/projects/torn.json.corrupt').existsSync(),
+      isTrue,
+      reason: 'the corrupt manifest is kept aside for inspection',
+    );
+  });
+
+  test(
+    'after quarantine, saving the same id shows the project again',
+    () async {
+      Directory('${dir.path}/projects').createSync(recursive: true);
+      File('${dir.path}/projects/alpha.json').writeAsStringSync('{ torn');
+
+      expect(await repo.list(), isEmpty); // quarantines alpha.json
+
+      await repo.save(project('alpha'));
+      final list = await repo.list();
+      expect(list.map((p) => p.id), ['alpha']);
+      expect(
+        File('${dir.path}/projects/alpha.json.corrupt').existsSync(),
+        isTrue,
+        reason: 'the quarantined copy stays on disk for inspection',
+      );
+    },
+  );
+
+  test('list ignores .tmp and .corrupt files and leaves them alone', () async {
+    await repo.save(project('a'));
+    File('${dir.path}/projects/b.json.tmp').writeAsStringSync('{}');
+    File('${dir.path}/projects/c.json.corrupt').writeAsStringSync('{ x');
+
+    final list = await repo.list();
+
+    expect(list.map((p) => p.id), ['a']);
+    expect(File('${dir.path}/projects/b.json.tmp').existsSync(), isTrue);
+    expect(File('${dir.path}/projects/c.json.corrupt').existsSync(), isTrue);
   });
 
   group('sweepOrphanAssets (#76)', () {
@@ -141,5 +212,131 @@ void main() {
       expect(deleted, 0);
       expect(File('${assets.path}/img_orphan.png').existsSync(), isTrue);
     });
+
+    test(
+      'a quarantined .json.corrupt manifest also aborts the sweep',
+      () async {
+        await repo.save(referencing('good', 'img_good.png'));
+        asset('img_good.png');
+        asset('img_orphan.png');
+        File(
+          '${dir.path}/projects/gone.json.corrupt',
+        ).writeAsStringSync('{ nope');
+
+        final deleted = await repo.sweepOrphanAssets(minAge: Duration.zero);
+
+        expect(
+          deleted,
+          0,
+          reason: 'invisible references must spare all assets',
+        );
+        expect(File('${assets.path}/img_orphan.png').existsSync(), isTrue);
+      },
+    );
+  });
+
+  group('duplicate', () {
+    StickerProject source() => StickerProject(
+      id: 'src',
+      name: 'Rex',
+      currentFrameIndex: 1,
+      createdAt: DateTime.utc(2026),
+      updatedAt: DateTime.utc(2026),
+      frames: const [
+        Frame(
+          id: 'src_f0',
+          layers: [
+            ImageLayer(
+              id: 'src_l0',
+              name: 'Photo',
+              assetPath: '/assets/img_1.png',
+              maskPath: '/assets/mask_1.png',
+            ),
+            TextLayer(id: 'src_l1', name: 'Cap', text: 'Hi', fontFamily: 'R'),
+          ],
+        ),
+        Frame(
+          id: 'src_f1',
+          layers: [
+            ImageLayer(
+              id: 'src_l2',
+              name: 'Photo',
+              assetPath: '/assets/img_1.png',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    Set<String> layerIds(StickerProject p) => {
+      for (final f in p.frames) ...f.layers.map((l) => l.id),
+    };
+
+    test('saves a deep copy with fresh ids sharing asset paths', () async {
+      await repo.save(source());
+      final copy = await repo.duplicate('src');
+
+      expect(copy, isNotNull);
+      expect(copy!.name, 'Rex copy');
+      expect(copy.id, isNot('src'));
+      expect(copy.currentFrameIndex, 1);
+
+      // Fresh ids for every frame and layer, none shared with the source.
+      final frameIds = copy.frames.map((f) => f.id).toSet();
+      expect(frameIds, hasLength(2));
+      expect(frameIds.intersection({'src_f0', 'src_f1'}), isEmpty);
+      expect(layerIds(copy), hasLength(3));
+      expect(layerIds(copy).intersection(layerIds(source())), isEmpty);
+
+      // Asset/mask files are shared, not copied.
+      final img = copy.frames.first.layers.first as ImageLayer;
+      expect(img.assetPath, '/assets/img_1.png');
+      expect(img.maskPath, '/assets/mask_1.png');
+
+      // The copy is persisted alongside the source.
+      final loaded = await repo.load(copy.id);
+      expect(loaded, isNotNull);
+      expect(loaded!.name, 'Rex copy');
+      expect((await repo.list()).map((p) => p.id), contains('src'));
+    });
+
+    test('returns null for a missing project', () async {
+      expect(await repo.duplicate('nope'), isNull);
+    });
+
+    test(
+      'shared asset survives deleting one twin, dies with the last',
+      () async {
+        final assets = Directory('${dir.path}/projects/assets')
+          ..createSync(recursive: true);
+        final img = File('${assets.path}/img_1.png')
+          ..writeAsBytesSync(const [1, 2, 3]);
+        img.setLastModifiedSync(
+          DateTime.now().subtract(const Duration(hours: 1)),
+        );
+        final withAsset = source().copyWith(
+          frames: [
+            Frame(
+              id: 'src_f0',
+              layers: [
+                ImageLayer(
+                  id: 'src_l0',
+                  name: 'Photo',
+                  assetPath: '${assets.path}/img_1.png',
+                ),
+              ],
+            ),
+          ],
+        );
+        await repo.save(withAsset);
+        final copy = await repo.duplicate('src');
+
+        await repo.delete('src'); // sweeps; the copy still references the file
+        expect(img.existsSync(), isTrue);
+
+        await repo.delete(copy!.id);
+        expect(img.existsSync(), isFalse);
+      },
+    );
   });
 }

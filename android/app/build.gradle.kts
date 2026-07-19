@@ -28,6 +28,14 @@ android {
             "tech.idct.stickermaker.stickercontentprovider"
     }
 
+    testOptions {
+        unitTests {
+            // Robolectric needs the merged manifest + resources on the JVM
+            // test classpath (StickerContentProviderTest).
+            isIncludeAndroidResources = true
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
@@ -43,6 +51,31 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+
+        }
+    }
+}
+
+// Release builds ship only real-device ABIs (arm64-v8a, armeabi-v7a). Every
+// ABI carries ~60-76 MiB of native code (ONNX Runtime + the ffmpeg libav*
+// family), and x86_64 is emulator-only — shipping it fattened the universal
+// APK to 243 MB (docs/reviews/2026-07-19-review.md, "243 MB fat release APK").
+//
+// This uses the variant packaging API because buildType-level ndk.abiFilters
+// is silently clobbered under the Flutter Gradle plugin — verified
+// empirically: with the filter set, the universal release APK still packaged
+// lib/x86_64 byte-for-byte. Scoped to release variants so debug builds keep
+// all ABIs and x86_64 emulators work unchanged.
+//
+// Skipped when the Flutter tool requests `--split-per-abi` so the x86_64
+// split APK (a never-distributed byproduct, see
+// docs/release/building-releases.md) stays a valid artifact.
+val isSplitPerAbiBuild =
+    project.findProperty("split-per-abi")?.toString()?.toBoolean() ?: false
+if (!isSplitPerAbiBuild) {
+    androidComponents {
+        onVariants(selector().withBuildType("release")) { variant ->
+            variant.packaging.jniLibs.excludes.add("**/x86_64/**")
         }
     }
 }
@@ -55,4 +88,21 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // JVM unit tests for the WhatsApp StickerContentProvider (Robolectric).
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation("androidx.test:core:1.7.0")
+}
+
+// With isIncludeAndroidResources, AGP's package<Variant>UnitTestForUnitTest
+// reads the merged assets dir that Flutter's copyFlutterAssets<Variant> also
+// writes into; Gradle 9 fails the build unless that dependency is explicit.
+tasks.configureEach {
+    val match = Regex("package(.+)UnitTestForUnitTest").matchEntire(name)
+    if (match != null) {
+        dependsOn("copyFlutterAssets${match.groupValues[1]}")
+    }
 }

@@ -98,6 +98,21 @@ flutter emulators --launch sm_test
 Hardware acceleration on Windows uses WHPX (Windows Hypervisor Platform); check it with
 `emulator -accel-check`. Boots take ~20–40s with acceleration.
 
+## Release builds
+
+Two supported paths — see `docs/release/building-releases.md` for the full details:
+
+```bash
+flutter build appbundle                # Play Store upload; Play serves per-device installs
+flutter build apk --split-per-abi      # per-ABI APKs for sideload / on-device testing
+```
+
+Release builds are restricted to the real-device ABIs (`arm64-v8a`, `armeabi-v7a`)
+via variant packaging excludes in `android/app/build.gradle.kts` — each ABI carries
+~60–76 MiB of ONNX Runtime + ffmpeg native code, and `x86_64` is emulator-only.
+**Debug builds keep all ABIs**, so emulators are unaffected; `flutter run --release`
+works on physical (arm) devices but not on x86_64 emulators.
+
 ## Testing
 
 Three layers, fastest first:

@@ -249,6 +249,33 @@ class EditorController extends Notifier<EditorState> {
     if (state.selectedLayerId == id) selectLayer(null);
   }
 
+  /// How far a duplicated layer is nudged from its source, in logical px, so
+  /// the copy never exactly buries the original.
+  static const double duplicateNudge = 16;
+
+  /// Inserts a fresh-id copy of layer [id] directly above the source (one
+  /// z-slot later in the bottom-to-top list), nudged by [duplicateNudge], and
+  /// selects it. A single undoable step.
+  void duplicateLayer(String id) {
+    final index = state.layers.indexWhere((l) => l.id == id);
+    if (index < 0) return;
+    final source = state.layers[index];
+    final nudged = source.transform.copyWith(
+      position: source.transform.position.translate(
+        duplicateNudge,
+        duplicateNudge,
+      ),
+    );
+    final clone = _cloneWithNewId(source);
+    final copy = switch (clone) {
+      ImageLayer() => clone.copyWith(transform: nudged),
+      TextLayer() => clone.copyWith(transform: nudged),
+      BubbleLayer() => clone.copyWith(transform: nudged),
+    };
+    _mutateLayers((layers) => [...layers]..insert(index + 1, copy));
+    selectLayer(copy.id);
+  }
+
   void reorderLayer(int oldIndex, int newIndex) {
     _mutateLayers((layers) {
       final next = [...layers];
@@ -478,7 +505,13 @@ class EditorController extends Notifier<EditorState> {
     );
   }
 
-  void rename(String name) => _commit(state.project.copyWith(name: name));
+  /// Renames the project. Blank input is rejected — the old name is kept —
+  /// and renaming to the current name is a no-op (no empty undo step).
+  void rename(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty || trimmed == state.project.name) return;
+    _commit(state.project.copyWith(name: trimmed));
+  }
 
   /// True when [maskPath] is still reachable — referenced by the live document
   /// or by any undo/redo snapshot. A superseded mask PNG may be deleted only

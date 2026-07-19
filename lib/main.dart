@@ -12,7 +12,9 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   registerBundledLicenses();
   // Cold launch is the safe moment (no editor open, no undo stacks) to drop
-  // orphaned image/mask files — e.g. superseded erase masks (#76).
+  // orphaned image/mask files — e.g. superseded erase masks (#76). The sweep
+  // does its filesystem work inside Isolate.run, so it never competes with
+  // first-frame work on the UI isolate.
   unawaited(
     ProjectRepository().sweepOrphanAssets().then((_) => 0, onError: (_) => 0),
   );

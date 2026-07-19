@@ -328,6 +328,67 @@ void main() {
     );
   });
 
+  test('rename guards blank input and trims whitespace', () {
+    final h = harness(twoLayerProject());
+    h.controller.rename('   ');
+    expect(h.container.read(editorControllerProvider).project.name, 'P');
+    expect(h.controller.canUndo, isFalse, reason: 'no empty undo step');
+
+    h.controller.rename('  Party pug  ');
+    expect(
+      h.container.read(editorControllerProvider).project.name,
+      'Party pug',
+    );
+  });
+
+  test('rename to the unchanged name adds no undo step', () {
+    final h = harness(twoLayerProject());
+    h.controller.rename('P');
+    expect(h.controller.canUndo, isFalse);
+  });
+
+  group('duplicateLayer', () {
+    test('inserts a fresh-id, nudged copy above the source and selects it', () {
+      final h = harness(twoLayerProject());
+      h.controller.duplicateLayer('img');
+      final s = h.container.read(editorControllerProvider);
+      expect(s.layers, hasLength(3));
+      // The copy sits directly above the source in the bottom-to-top list.
+      expect(s.layers[0].id, 'img');
+      expect(s.layers[2].id, 'txt');
+      final copy = s.layers[1] as ImageLayer;
+      expect(copy.id, isNot('img'));
+      expect(copy.assetPath, 'p.png', reason: 'shares the asset file');
+      expect(
+        copy.transform.position,
+        const Offset(
+          256 + EditorController.duplicateNudge,
+          256 + EditorController.duplicateNudge,
+        ),
+      );
+      expect(s.selectedLayerId, copy.id, reason: 'selection moves to the copy');
+    });
+
+    test('is a single undoable step', () {
+      final h = harness(twoLayerProject());
+      h.controller.selectLayer('txt');
+      h.controller.duplicateLayer('txt');
+      expect(h.container.read(editorControllerProvider).layers, hasLength(3));
+
+      h.controller.undo();
+      final s = h.container.read(editorControllerProvider);
+      expect(s.layers.map((l) => l.id), ['img', 'txt']);
+      expect(h.controller.canUndo, isFalse, reason: 'one step, fully undone');
+    });
+
+    test('unknown id is a no-op', () {
+      final h = harness(twoLayerProject());
+      h.controller.duplicateLayer('nope');
+      expect(h.container.read(editorControllerProvider).layers, hasLength(2));
+      expect(h.controller.canUndo, isFalse);
+    });
+  });
+
   test('EditorState.copyWith clears selection with the sentinel', () {
     const base = EditorState(
       project: StickerProject(

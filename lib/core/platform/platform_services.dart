@@ -1,6 +1,10 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// Device RAM facts from Android's ActivityManager: total/available bytes and
+/// the system's own low-RAM classification (`isLowRamDevice`).
+typedef MemoryInfo = ({int totalMem, int availMem, bool lowRam});
+
 /// Small Android platform helpers behind `sticker_maker/platform`:
 /// deep-link launching (Telegram's tg:// links) and saving exported stickers
 /// into the shared Downloads collection (MediaStore). [channel] is injectable
@@ -61,6 +65,27 @@ class PlatformServices {
       if (await shareToApp(paths, mimeType, pkg)) return true;
     }
     return false;
+  }
+
+  /// Device RAM snapshot (ActivityManager.getMemoryInfo + isLowRamDevice).
+  /// Returns null when the platform side can't answer — an APK predating the
+  /// call, tests without a handler, or a non-Android host — so callers can
+  /// choose their own safe default instead of guessing here.
+  Future<MemoryInfo?> memoryInfo() async {
+    try {
+      final map = await _channel.invokeMapMethod<String, Object?>(
+        'getMemoryInfo',
+      );
+      final total = map?['totalMem'];
+      final avail = map?['availMem'];
+      final lowRam = map?['lowRam'];
+      if (total is! int || avail is! int || lowRam is! bool) return null;
+      return (totalMem: total, availMem: avail, lowRam: lowRam);
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
   }
 
   /// Saves [bytes] as [fileName] into the device's Downloads. Returns the

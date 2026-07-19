@@ -198,7 +198,10 @@ abstract final class StickerRenderer {
       fontFamily: layer.fontFamily,
       fontSize: layer.fontSize * scale,
       height: 1,
-      letterSpacing: 1,
+      // Tracking scales with the font so the outline/shadow/spacing stay in the
+      // same proportion at every output size (512-px reference down the budget
+      // ladder) and match the on-canvas StickerCaption preview (WYSIWYG).
+      letterSpacing: 1 * scale,
       fontWeight: FontWeight.w700,
     );
     // Emoji / props (#61) render as a plain glyph — no caption stroke/shadow.
@@ -259,6 +262,9 @@ abstract final class StickerRenderer {
       maxSize: layer.fontSize * scale,
       bounds: captionRect.size,
     );
+    // Match BubbleView exactly: cap the line count + ellipsize a caption too
+    // long to fit even at the floor size, and clip to the body rect, so it can
+    // never spill over the outline/tail in the exported sticker (#79 / WYSIWYG).
     final tp = TextPainter(
       text: TextSpan(
         text: layer.text,
@@ -272,7 +278,11 @@ abstract final class StickerRenderer {
       ),
       textAlign: TextAlign.center,
       textDirection: TextDirection.ltr,
+      maxLines: bubbleCaptionMaxLines(fontSize, captionRect.height),
+      ellipsis: '…',
     )..layout(maxWidth: captionRect.width);
+    canvas.save();
+    canvas.clipRect(captionRect);
     tp.paint(
       canvas,
       Offset(
@@ -280,6 +290,7 @@ abstract final class StickerRenderer {
         captionRect.center.dy - tp.height / 2,
       ),
     );
+    canvas.restore();
     canvas.restore();
   }
 
