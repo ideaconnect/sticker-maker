@@ -9,6 +9,7 @@ import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
 import 'package:sticker_maker/core/theme/app_theme.dart';
 import 'package:sticker_maker/features/editor/state/editor_controller.dart';
+import 'package:sticker_maker/features/editor/state/editor_tool.dart';
 import 'package:sticker_maker/features/editor/widgets/bubble_view.dart';
 import 'package:sticker_maker/features/editor/widgets/editor_canvas.dart';
 
@@ -152,6 +153,41 @@ void main() {
     await tester.tapAt(topLeft + const Offset(256 * scale, 256 * scale));
     await tester.pumpAndSettle();
     expect(c.read(editorControllerProvider).selectedLayerId, 'img');
+  });
+
+  testWidgets('the × on the selection frame deletes the layer', (tester) async {
+    final c = await pumpCanvas(tester, centeredImage());
+    await tester.tap(find.byType(EditorCanvas)); // select the photo
+    await tester.pumpAndSettle();
+    expect(c.read(editorControllerProvider).selectedLayerId, 'img');
+
+    final handle = find.byKey(const ValueKey('layer-delete-handle'));
+    expect(handle, findsOneWidget);
+    await tester.tap(handle);
+    await tester.pumpAndSettle();
+
+    expect(c.read(editorControllerProvider).layers, isEmpty);
+    expect(
+      c.read(editorControllerProvider.notifier).canUndo,
+      isTrue,
+      reason: 'deletion is one undoable step',
+    );
+  });
+
+  testWidgets('the × hides in Erase mode (taps mean brush dabs there)', (
+    tester,
+  ) async {
+    final c = await pumpCanvas(tester, centeredImage());
+    await tester.tap(find.byType(EditorCanvas));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('layer-delete-handle')),
+      findsOneWidget,
+    );
+
+    c.read(editorControllerProvider.notifier).setTool(EditorTool.erase);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('layer-delete-handle')), findsNothing);
   });
 
   testWidgets('dragging the tail handle re-aims the bubble tail (#78)', (

@@ -144,6 +144,17 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
                 if (selected is BubbleLayer &&
                     selected.shape != BubbleShape.caption)
                   _tailHandle(selected, scale),
+                // Delete the selected layer right on the canvas — previously
+                // removal only existed on the Layers-panel rows, so anything
+                // added while on Adjust/Text felt undeletable. Hidden for
+                // Erase/Cut-out, where canvas taps mean brush dabs / object
+                // picks and a stray × would be destructive.
+                if (const {
+                  EditorTool.layers,
+                  EditorTool.adjust,
+                  EditorTool.text,
+                }.contains(editor.tool))
+                  _deleteHandle(selected, scale),
               ],
             ],
           ),
@@ -199,6 +210,46 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
               color: AppColors.cyan,
               border: Border.all(color: const Color(0xFF131019), width: 2),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A tappable × on the selection frame's top-right corner (rotating with
+  /// the layer) that removes the selected layer — one undo step.
+  Widget _deleteHandle(Layer layer, double scale) {
+    const pad = 10.0; // matches _selectionOverlay's frame padding
+    final size = _sizeOf(layer);
+    final t = layer.transform;
+    // Top-right corner of the padded frame, rotated around the layer center.
+    final cx = size.width * scale / 2 + pad;
+    final cy = -(size.height * scale / 2 + pad);
+    final cosA = math.cos(t.rotation);
+    final sinA = math.sin(t.rotation);
+    final corner =
+        t.position * scale +
+        Offset(cx * cosA - cy * sinA, cx * sinA + cy * cosA);
+    const touch = 16.0;
+    return Positioned(
+      key: const ValueKey('layer-delete-handle'),
+      left: corner.dx - touch,
+      top: corner.dy - touch,
+      width: touch * 2,
+      height: touch * 2,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _controller.removeLayer(layer.id),
+        child: Center(
+          child: Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.rose,
+              border: Border.all(color: const Color(0xFF131019), width: 2),
+            ),
+            child: const Icon(Icons.close, size: 13, color: Colors.white),
           ),
         ),
       ),
