@@ -536,6 +536,17 @@ class EditorController extends Notifier<EditorState> {
     _commit(state.project.copyWith(name: trimmed));
   }
 
+  /// Sets the playback / export frame rate. One coalesced undo step so dragging
+  /// or tapping through speeds collapses to a single entry; clamped to the
+  /// project's supported range and a no-op when unchanged.
+  void setFps(double fps) {
+    final clamped = fps
+        .clamp(StickerProject.minFps, StickerProject.maxFps)
+        .toDouble();
+    if (clamped == state.project.fps) return;
+    _commit(state.project.copyWith(fps: clamped), coalesce: 'fps');
+  }
+
   /// True when [maskPath] is still reachable — referenced by the live document
   /// or by any undo/redo snapshot. A superseded mask PNG may be deleted only
   /// while this is false, so an undo/redo can never surface a missing mask

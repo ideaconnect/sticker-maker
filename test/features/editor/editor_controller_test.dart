@@ -54,6 +54,47 @@ void main() {
     expect(s.layers.single, isA<TextLayer>());
   });
 
+  group('setFps', () {
+    test('updates the project fps', () {
+      final h = harness(twoLayerProject());
+      h.controller.setFps(2);
+      expect(h.container.read(editorControllerProvider).project.fps, 2);
+    });
+
+    test('clamps to the supported range', () {
+      final h = harness(twoLayerProject());
+      h.controller.setFps(999);
+      expect(
+        h.container.read(editorControllerProvider).project.fps,
+        StickerProject.maxFps,
+      );
+      h.controller.setFps(0.001);
+      expect(
+        h.container.read(editorControllerProvider).project.fps,
+        StickerProject.minFps,
+      );
+    });
+
+    test('a no-op change pushes no undo step', () {
+      final h = harness(twoLayerProject()); // default fps 8
+      expect(h.controller.canUndo, isFalse);
+      h.controller.setFps(8);
+      expect(h.controller.canUndo, isFalse);
+    });
+
+    test('consecutive changes coalesce into one undoable step', () {
+      final h = harness(twoLayerProject());
+      h.controller
+        ..setFps(4)
+        ..setFps(2)
+        ..setFps(1);
+      expect(h.container.read(editorControllerProvider).project.fps, 1);
+      h.controller.undo();
+      // One coalesced step restores the original 8 fps in a single undo.
+      expect(h.container.read(editorControllerProvider).project.fps, 8);
+    });
+  });
+
   test('setTool and selectLayer', () {
     final h = harness(twoLayerProject());
     h.controller.setTool(EditorTool.text);
