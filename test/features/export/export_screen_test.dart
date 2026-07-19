@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -13,7 +14,10 @@ import 'package:sticker_maker/features/editor/state/editor_controller.dart';
 import 'package:sticker_maker/features/export/animated_export_service.dart';
 import 'package:sticker_maker/features/export/animation_encoder.dart';
 import 'package:sticker_maker/features/export/export_screen.dart';
+import 'package:sticker_maker/features/export/static_webp_encoder.dart';
 import 'package:sticker_maker/features/export/sticker_encoder.dart';
+
+import 'webp_fixtures.dart';
 
 const _project = StickerProject(
   id: 'p',
@@ -58,6 +62,25 @@ class _FakeAnimatedExport extends AnimatedExportService {
     bytes: Uint8List.fromList(const [1, 2, 3]),
     size: 512,
     format: spec.format,
+  );
+}
+
+/// Runs the REAL budget pipeline (with an injected fake lossy encoder) and
+/// records what the screen's WhatsApp path actually emits.
+class _RecordingBudgetEncoder extends StaticWebpBudgetEncoder {
+  _RecordingBudgetEncoder({super.lossy});
+
+  EncodedSticker? last;
+
+  @override
+  Future<EncodedSticker> encode(
+    Frame frame, {
+    int maxBytes = StaticWebpBudgetEncoder.whatsappMaxBytes,
+    String stickerName = 'sticker',
+  }) async => last = await super.encode(
+    frame,
+    maxBytes: maxBytes,
+    stickerName: stickerName,
   );
 }
 
@@ -474,4 +497,70 @@ void main() {
     expect(find.text('Share animation'), findsOneWidget);
     expect(find.text('Share sticker'), findsNothing);
   });
+
+  testWidgets(
+    'the WhatsApp path emits exactly 512 px even when lossless overshoots '
+    '(lossy ladder, never a downscale)',
+    (tester) async {
+      final dir = Directory.systemTemp.createTempSync('sm_export_noisy_');
+      addTearDown(() {
+        imageCache.clear();
+        imageCache.clearLiveImages();
+        try {
+          dir.deleteSync(recursive: true);
+        } catch (_) {
+          // Windows may still hold an image handle — best effort.
+        }
+      });
+      final noisy = writeNoisyPng(dir);
+      final fakeLossy = FakeStaticWebpEncoder(
+        bytesFor: (q) => smallValidWebp512(),
+      );
+      final recorder = _RecordingBudgetEncoder(lossy: fakeLossy);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            editorControllerProvider.overrideWith(
+              () => EditorController(noisyProject('noisy', noisy.path)),
+            ),
+            staticWebpBudgetEncoderProvider.overrideWithValue(recorder),
+          ],
+          child: MaterialApp(
+            theme: buildStickerTheme(),
+            home: const ExportScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.text('WhatsApp'));
+      await tester.pump();
+
+      // The size estimate re-encodes with real file IO + dart:ui rasterizing —
+      // interleave real-async waits with pumps until the encode lands.
+      for (var i = 0; i < 600 && recorder.last == null; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+      }
+
+      expect(recorder.last, isNotNull, reason: 'WhatsApp estimate completed');
+      expect(
+        recorder.last!.size,
+        512,
+        reason:
+            "WhatsApp's exact-512 rule: the share path must never emit a "
+            'sub-512 sticker',
+      );
+      expect(recorder.last!.byteLength, lessThanOrEqualTo(100 * 1024));
+      expect(
+        fakeLossy.calls,
+        isNotEmpty,
+        reason: 'noise overshoots losslessly → the lossy ladder engaged',
+      );
+    },
+    timeout: const Timeout(Duration(minutes: 5)),
+  );
 }

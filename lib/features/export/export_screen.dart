@@ -24,6 +24,7 @@ import '../packs/pack_repository.dart';
 import '../packs/sticker_pack.dart';
 import 'animated_export_service.dart';
 import 'animation_encoder.dart';
+import 'static_webp_encoder.dart';
 import 'sticker_encoder.dart';
 
 /// The encoder used for the GIF target, injected so widget tests can observe
@@ -157,11 +158,12 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
       return ref.read(gifEncoderProvider)(frames, fps: 12);
     }
     if (_target == 'whatsapp') {
-      // WhatsApp's static cap is 100 KB — downscale WebP to fit.
-      return StickerEncoder.webpWithinBudget(
-        project.currentFrame,
-        maxBytes: 100 * 1024,
-      );
+      // WhatsApp's static cap is 100 KB at *exactly* 512×512 — fit it via the
+      // lossy quality ladder, never by downscaling (WhatsApp rejects any
+      // non-512 sticker).
+      return ref
+          .read(staticWebpBudgetEncoderProvider)
+          .encode(project.currentFrame, stickerName: project.name);
     }
     if (_target == 'webp') return StickerEncoder.webp(project.currentFrame);
     return StickerEncoder.png(project.currentFrame, size: _pngSize());
