@@ -21,7 +21,9 @@ class FfmpegRunResult {
 /// bundled FFmpegKit; host tests inject a fake so no plugin channel is touched.
 typedef FfmpegRunner = Future<FfmpegRunResult> Function(String command);
 
-Future<FfmpegRunResult> _ffmpegKitRunner(String command) async {
+/// The production [FfmpegRunner]: one FFmpegKit session per command. Shared by
+/// the animated encoders below and [FfmpegStaticWebpEncoder].
+Future<FfmpegRunResult> ffmpegKitRunner(String command) async {
   final session = await FFmpegKit.execute(command);
   return FfmpegRunResult(
     success: ReturnCode.isSuccess(await session.getReturnCode()),
@@ -39,7 +41,7 @@ Future<FfmpegRunResult> _ffmpegKitRunner(String command) async {
 /// knob — never the raster size.
 abstract class _FfmpegAnimationEncoder implements AnimationEncoder {
   _FfmpegAnimationEncoder({FfmpegRunner? runner, this.scratchDir})
-    : _runner = runner ?? _ffmpegKitRunner;
+    : _runner = runner ?? ffmpegKitRunner;
 
   final FfmpegRunner _runner;
 

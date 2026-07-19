@@ -8,8 +8,11 @@ import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
 import 'package:sticker_maker/features/export/animated_export_service.dart';
 import 'package:sticker_maker/features/export/animation_encoder.dart';
+import 'package:sticker_maker/features/export/static_webp_encoder.dart';
 import 'package:sticker_maker/features/packs/sticker_pack.dart';
 import 'package:sticker_maker/features/packs/whatsapp_pack_exporter.dart';
+
+import '../export/webp_fixtures.dart';
 
 StickerProject _proj(String id) => StickerProject(
   id: id,
@@ -144,6 +147,108 @@ void main() {
         baseDir: tmp,
       ).export(const StickerPack(id: 'e', name: 'Empty'), const {}),
       throwsStateError,
+    );
+  });
+
+  test('a photo-noise sticker engages the lossy ladder and still ships an '
+      'exactly-512² WebP within 100 KB', () async {
+    final noisy = writeNoisyPng(tmp);
+    final fake = FakeStaticWebpEncoder(bytesFor: (q) => smallValidWebp512());
+    const pack = StickerPack(
+      id: 'photo',
+      name: 'Photos',
+      stickers: [
+        PackSticker(id: 's0', projectId: 'noise', emojis: ['📷']),
+        PackSticker(id: 's1', projectId: 'p1', emojis: ['🐶']),
+        PackSticker(id: 's2', projectId: 'p2', emojis: ['🎉']),
+      ],
+    );
+    final projects = {
+      'noise': noisyProject('noise', noisy.path),
+      'p1': _proj('p1'),
+      'p2': _proj('p2'),
+    };
+
+    final export = await WhatsAppPackExporter(
+      baseDir: tmp,
+      staticEncoder: StaticWebpBudgetEncoder(lossy: fake),
+    ).export(pack, projects);
+
+    expect(
+      fake.calls,
+      isNotEmpty,
+      reason: 'lossless VP8L overshoots 100 KB on noise → ladder engages',
+    );
+    // Every written sticker — including the photo one — is a valid WebP,
+    // exactly 512², within WhatsApp's static cap.
+    for (var i = 0; i < 3; i++) {
+      final bytes = File('${export.directory.path}/$i.webp').readAsBytesSync();
+      expect(bytes.length, lessThanOrEqualTo(100 * 1024));
+      final decoded = img.decodeWebP(bytes)!;
+      expect([decoded.width, decoded.height], [512, 512]);
+    }
+    expect(export.contentsFile.existsSync(), isTrue);
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  test(
+    'an unfittable sticker aborts the export and never writes contents.json',
+    () async {
+      final noisy = writeNoisyPng(tmp);
+      // Lossy output that never fits the 100 KB cap, at any quality.
+      final fake = FakeStaticWebpEncoder(
+        bytesFor: (q) => Uint8List(200 * 1024),
+      );
+      const pack = StickerPack(
+        id: 'big',
+        name: 'Big',
+        stickers: [
+          PackSticker(id: 's0', projectId: 'noise', emojis: ['📷']),
+        ],
+      );
+
+      await expectLater(
+        WhatsAppPackExporter(
+          baseDir: tmp,
+          staticEncoder: StaticWebpBudgetEncoder(lossy: fake),
+        ).export(pack, {'noise': noisyProject('noise', noisy.path)}),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('noise'),
+          ),
+        ),
+      );
+
+      // The half-built directory must never gain a manifest — without
+      // contents.json the ContentProvider serves no pack at all.
+      expect(
+        File('${tmp.path}/wa_export/big/contents.json').existsSync(),
+        isFalse,
+      );
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  test('the final compliance gate blocks a sticker without emoji tags before '
+      'contents.json is written', () async {
+    const pack = StickerPack(
+      id: 'gate',
+      name: 'Gate',
+      stickers: [
+        PackSticker(id: 's0', projectId: 'p0'), // no emojis
+      ],
+    );
+
+    await expectLater(
+      WhatsAppPackExporter(baseDir: tmp).export(pack, {'p0': _proj('p0')}),
+      throwsA(
+        isA<StateError>().having((e) => e.message, 'message', contains('p0')),
+      ),
+    );
+    expect(
+      File('${tmp.path}/wa_export/gate/contents.json').existsSync(),
+      isFalse,
     );
   });
 
