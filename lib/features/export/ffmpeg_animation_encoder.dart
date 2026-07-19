@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
@@ -87,52 +88,113 @@ abstract class _FfmpegAnimationEncoder implements AnimationEncoder {
         '${codecArgs(quality: quality, loop: loop)} $outPath';
   }
 
+  /// Writes the PNG scratch sequence ONCE: the pure-Dart `img.encodePng` batch
+  /// runs in a single `Isolate.run` (frames are plain RGBA bytes) and the files
+  /// land via async IO. The returned session re-runs only the ffmpeg command
+  /// per [AnimationEncodeSession.encode] — the byte-budget search shares one
+  /// frame sequence across all of its quality rungs.
+  ///
+  /// The ffmpeg call itself stays on the main isolate (plugins are
+  /// root-isolate only).
+  @override
+  Future<AnimationEncodeSession> prepare(List<RgbaFrame> frames) async {
+    assert(frames.isNotEmpty, 'need at least one frame');
+    final base = scratchDir ?? await getTemporaryDirectory();
+    final dir = Directory(
+      '${base.path}/ffenc_${id}_${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await dir.create(recursive: true);
+    try {
+      final pngs = await Isolate.run(() => _encodeFramesToPng(frames));
+      for (var i = 0; i < pngs.length; i++) {
+        await File('${dir.path}/${i + 1}.png').writeAsBytes(pngs[i]);
+      }
+    } catch (_) {
+      try {
+        await dir.delete(recursive: true);
+      } catch (_) {
+        // Best-effort cleanup; surface the original failure below.
+      }
+      rethrow;
+    }
+    return _FfmpegEncodeSession(this, dir, frames);
+  }
+
   @override
   Future<Uint8List> encode(
     List<RgbaFrame> frames, {
     required int quality,
     required bool loop,
   }) async {
-    assert(frames.isNotEmpty, 'need at least one frame');
-    final base = scratchDir ?? await getTemporaryDirectory();
-    final dir = Directory(
-      '${base.path}/ffenc_${id}_${DateTime.now().microsecondsSinceEpoch}',
-    )..createSync(recursive: true);
+    final session = await prepare(frames);
     try {
-      for (var i = 0; i < frames.length; i++) {
-        final f = frames[i];
-        final image = img.Image.fromBytes(
-          width: f.width,
-          height: f.height,
-          bytes: f.bytes.buffer,
-          numChannels: 4,
-        );
-        File('${dir.path}/${i + 1}.png').writeAsBytesSync(img.encodePng(image));
-      }
-      final outPath = '${dir.path}/out.$extension';
-      final command = buildCommand(
-        dir,
-        outPath,
-        frames,
-        quality: quality,
-        loop: loop,
-      );
-      final result = await _runner(command);
-      if (!result.success) {
-        throw StateError('ffmpeg $id failed: ${_tail(result.output)}');
-      }
-      return File(outPath).readAsBytesSync();
+      return await session.encode(quality: quality, loop: loop);
     } finally {
-      try {
-        dir.deleteSync(recursive: true);
-      } catch (_) {
-        // Best-effort scratch cleanup; never mask the encode result.
-      }
+      await session.dispose();
     }
   }
 
   static String _tail(String s) =>
       s.length <= 400 ? s : s.substring(s.length - 400);
+}
+
+/// Pure-Dart PNG encode of the whole frame batch. Top-level so
+/// [_FfmpegAnimationEncoder.prepare] can hand it to a single `Isolate.run`
+/// (mirrors the `mobile_sam_engine.dart` pattern — only plugin calls must stay
+/// on the root isolate).
+List<Uint8List> _encodeFramesToPng(List<RgbaFrame> frames) => [
+  for (final f in frames)
+    img.encodePng(
+      img.Image.fromBytes(
+        width: f.width,
+        height: f.height,
+        bytes: f.bytes.buffer,
+        numChannels: 4,
+      ),
+    ),
+];
+
+/// One prepared `%d.png` scratch sequence; every [encode] re-runs only ffmpeg
+/// over it. [dispose] removes the scratch dir (and the last output with it).
+class _FfmpegEncodeSession implements AnimationEncodeSession {
+  _FfmpegEncodeSession(this._encoder, this._dir, this._frames);
+
+  final _FfmpegAnimationEncoder _encoder;
+  final Directory _dir;
+  final List<RgbaFrame> _frames;
+  bool _disposed = false;
+
+  @override
+  Future<Uint8List> encode({required int quality, required bool loop}) async {
+    assert(!_disposed, 'encode called after dispose');
+    final outPath = '${_dir.path}/out.${_encoder.extension}';
+    final command = _encoder.buildCommand(
+      _dir,
+      outPath,
+      _frames,
+      quality: quality,
+      loop: loop,
+    );
+    final result = await _encoder._runner(command);
+    if (!result.success) {
+      throw StateError(
+        'ffmpeg ${_encoder.id} failed: '
+        '${_FfmpegAnimationEncoder._tail(result.output)}',
+      );
+    }
+    return File(outPath).readAsBytes();
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    try {
+      await _dir.delete(recursive: true);
+    } catch (_) {
+      // Best-effort scratch cleanup; never mask the encode result.
+    }
+  }
 }
 
 /// WebM VP9 **with alpha** for Telegram video stickers (#67 / ANIM-2).

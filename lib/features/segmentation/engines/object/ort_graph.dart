@@ -1,9 +1,22 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_onnxruntime/flutter_onnxruntime.dart';
 
 /// One named tensor feed for an [OrtGraph] run.
 typedef GraphFeed = ({Float32List data, List<int> shape});
+
+/// Coerces a flattened ORT output to [Float32List]. Fast path: on Android,
+/// `flutter_onnxruntime` already hands back a real [Float32List] — return it
+/// as-is instead of copying every element through boxed `num`s (a megapixel
+/// mask output is hundreds of thousands of boxed doubles on the UI isolate,
+/// see docs/reviews/2026-07-19-review.md). The boxed copy remains as the
+/// fallback for backends that return plain `List<dynamic>`.
+@visibleForTesting
+Float32List coerceFloat32(List<dynamic> flat) {
+  if (flat is Float32List) return flat;
+  return Float32List.fromList([for (final v in flat) (v as num).toDouble()]);
+}
 
 /// A named-input / named-output ONNX graph — the injectable native seam for
 /// the MobileSAM engine (#85), mirroring the single-input `Segmenter` seam of
@@ -52,10 +65,9 @@ class OrtGraphSession implements OrtGraph {
       final picked = <String, Float32List>{};
       for (final entry in results.entries) {
         if (outputs.contains(entry.key)) {
-          final flat = await entry.value.asFlattenedList();
-          picked[entry.key] = Float32List.fromList([
-            for (final v in flat) (v as num).toDouble(),
-          ]);
+          picked[entry.key] = coerceFloat32(
+            await entry.value.asFlattenedList(),
+          );
         }
         await entry.value.dispose();
       }
