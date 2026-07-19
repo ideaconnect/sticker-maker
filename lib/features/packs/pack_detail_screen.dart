@@ -164,7 +164,11 @@ class _PackDetailScreenState extends ConsumerState<PackDetailScreen> {
       for (final p in projectsAsync.asData?.value ?? const <StickerProject>[])
         p.id: p,
     };
-    final issues = pack.validate();
+    // Once projects are loaded, dangling references (deleted source projects)
+    // become blocking issues: the banner explains and the share buttons hide.
+    final issues = pack.validate(
+      knownProjectIds: projectsAsync.asData == null ? null : byId.keys.toSet(),
+    );
 
     return Scaffold(
       body: SafeArea(

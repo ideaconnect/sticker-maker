@@ -7,21 +7,27 @@ import '../../../core/widgets/checkerboard.dart';
 import '../../editor/widgets/sticker_canvas.dart';
 
 /// A saved-sticker card: live canvas preview, GIF/PNG badge, name + layer/frame
-/// count. Tap to open; long‑press to delete (with confirmation). Shared by the
-/// Home "Recent" grid and the "All stickers" screen (#63).
+/// count. Tap to open; long‑press to delete. Shared by the Home "Recent" grid
+/// and the "All stickers" screen (#63).
+///
+/// The owner handles confirmation in [onDeleteRequested] (see
+/// `confirmAndDeleteProject`), so the dialog can warn about pack membership —
+/// something this tile can't know.
 class ProjectTile extends StatelessWidget {
   const ProjectTile({
     super.key,
     required this.project,
     required this.radius,
     required this.onTap,
-    required this.onDelete,
+    required this.onDeleteRequested,
   });
 
   final StickerProject project;
   final double radius;
   final VoidCallback onTap;
-  final VoidCallback onDelete;
+
+  /// Invoked on long-press; the owner confirms (and cascades) the delete.
+  final VoidCallback onDeleteRequested;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +44,7 @@ class ProjectTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(radius),
         onTap: onTap,
-        onLongPress: () => _confirmDelete(context),
+        onLongPress: onDeleteRequested,
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: AppColors.card,
@@ -122,36 +128,5 @@ class ProjectTile extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _confirmDelete(BuildContext context) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.panel,
-        title: Text(
-          'Delete "${project.name}"?',
-          style: const TextStyle(
-            fontFamily: AppFonts.display,
-            color: AppColors.textPrimary,
-            fontSize: 17,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: AppColors.rose),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (ok ?? false) onDelete();
   }
 }

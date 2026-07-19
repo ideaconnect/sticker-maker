@@ -1,3 +1,4 @@
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -179,9 +180,10 @@ abstract final class StickerEncoder {
   }
 
   /// Encodes [frames] as an animated GIF at [fps] (looping). Each frame is
-  /// rendered via [StickerRenderer] then combined; GIF's 256-colour palette +
-  /// 1-bit transparency are handled by the encoder. CPU-heavy — a large GIF
-  /// should be offloaded to an isolate by the caller.
+  /// rendered via [StickerRenderer] on the main isolate (dart:ui is
+  /// root-isolate only); the CPU-heavy palette quantization + per-pixel
+  /// palettize loop + GIF encode then run in a single `Isolate.run` so the UI
+  /// isolate never blocks on them.
   static Future<EncodedSticker> gif(
     List<Frame> frames, {
     int size = 512,
@@ -189,9 +191,21 @@ abstract final class StickerEncoder {
   }) async {
     assert(frames.isNotEmpty, 'need at least one frame');
     final durationMs = (1000 / fps).round().clamp(20, 10000);
+    final rendered = <img.Image>[
+      for (final frame in frames)
+        await _renderRgba(frame, size, frameDurationMs: durationMs),
+    ];
+    // Rendered frames are plain pixel buffers, so they cross isolates cheaply.
+    final bytes = await Isolate.run(() => _encodeGifFrames(rendered));
+    return EncodedSticker(bytes: bytes, size: size, format: 'gif');
+  }
+
+  /// Combines pre-rendered RGBA frames into GIF bytes: NeuralQuantizer
+  /// training, the per-pixel palettize loop, and `encodeGif`. Pure Dart over
+  /// plain pixel buffers — [gif] runs it via `Isolate.run`, off the UI isolate.
+  static Uint8List _encodeGifFrames(List<img.Image> rendered) {
     img.Image? animation;
-    for (final frame in frames) {
-      final rgba = await _renderRgba(frame, size, frameDurationMs: durationMs);
+    for (final rgba in rendered) {
       // Palettize with a reserved transparent index so the background stays
       // transparent instead of flattening to black.
       final frameImage = _toTransparentPaletteFrame(rgba);
@@ -201,11 +215,7 @@ abstract final class StickerEncoder {
         animation.addFrame(frameImage);
       }
     }
-    return EncodedSticker(
-      bytes: img.encodeGif(animation!),
-      size: size,
-      format: 'gif',
-    );
+    return img.encodeGif(animation!);
   }
 
   /// Generic budget search: tries [sizes] (largest first) and returns the first
