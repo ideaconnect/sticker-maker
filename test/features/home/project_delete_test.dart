@@ -94,6 +94,16 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
+/// Long-press [name]'s tile, then pick Delete from the tile menu (#97) to reach
+/// the pack-aware confirm dialog (#95). Long-press now opens the Open / Rename /
+/// Duplicate / Delete menu rather than deleting directly.
+Future<void> _openDeleteConfirm(WidgetTester tester, String name) async {
+  await tester.longPress(find.text(name));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Delete'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() {
     final view = TestWidgetsFlutterBinding.ensureInitialized()
@@ -130,8 +140,7 @@ void main() {
       ]);
       await _pump(tester, repos.projects, repos.packs);
 
-      await tester.longPress(find.text('Rex'));
-      await tester.pumpAndSettle();
+      await _openDeleteConfirm(tester, 'Rex');
 
       // The confirm dialog names every affected pack.
       expect(find.text('Delete "Rex"?'), findsOneWidget);
@@ -141,7 +150,7 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(find.text('Delete'));
+      await tester.tap(find.text('Delete').last);
       await tester.pumpAndSettle();
 
       // The cascade persisted: no pack keeps a slot for the deleted project.
@@ -164,13 +173,12 @@ void main() {
     ]);
     await _pump(tester, repos.projects, repos.packs);
 
-    await tester.longPress(find.text('Bella'));
-    await tester.pumpAndSettle();
+    await _openDeleteConfirm(tester, 'Bella');
 
     expect(find.text('Delete "Bella"?'), findsOneWidget);
     expect(find.textContaining('Also used in pack'), findsNothing);
 
-    await tester.tap(find.text('Delete'));
+    await tester.tap(find.text('Delete').last);
     await tester.pumpAndSettle();
 
     expect(repos.projects.contains('p_bella'), isFalse);
@@ -183,8 +191,7 @@ void main() {
     ]);
     await _pump(tester, repos.projects, repos.packs);
 
-    await tester.longPress(find.text('Rex'));
-    await tester.pumpAndSettle();
+    await _openDeleteConfirm(tester, 'Rex');
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 

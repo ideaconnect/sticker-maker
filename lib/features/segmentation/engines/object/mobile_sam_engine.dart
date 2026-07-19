@@ -363,7 +363,7 @@ class MobileSamEngine implements ObjectSegmentationEngine {
       await tmp.writeAsBytes(builder.takeBytes(), flush: true);
       await tmp.rename('${dir.path}/$key.bin');
       tmp = null;
-      await _pruneDiskCache(dir);
+      await _pruneDiskCache(dir, keep: '$key.bin');
     } catch (_) {
       // Disk cache is an optimization — never fail the pipeline over it.
       try {
@@ -374,9 +374,12 @@ class MobileSamEngine implements ObjectSegmentationEngine {
     }
   }
 
-  /// Caps the disk cache at [maxDiskCacheEntries] embeddings — newest by
-  /// mtime win. Best-effort, called after each save.
-  Future<void> _pruneDiskCache(Directory dir) async {
+  /// Caps the disk cache at [maxDiskCacheEntries] embeddings — newest by mtime
+  /// win. The [keep] entry (the basename just saved) is never evicted even
+  /// under equal mtimes, so a rapid save is never immediately pruned (coarse
+  /// filesystem mtime resolution can tie many entries). Best-effort, called
+  /// after each save.
+  Future<void> _pruneDiskCache(Directory dir, {String? keep}) async {
     try {
       final entries = <(File, DateTime)>[];
       for (final entity in dir.listSync()) {
@@ -385,7 +388,14 @@ class MobileSamEngine implements ObjectSegmentationEngine {
         }
       }
       if (entries.length <= maxDiskCacheEntries) return;
-      entries.sort((a, b) => b.$2.compareTo(a.$2));
+      // Newest first; the just-saved entry sorts ahead of any mtime tie so it
+      // always lands inside the kept window.
+      entries.sort((a, b) {
+        final aKeep = keep != null && a.$1.uri.pathSegments.last == keep;
+        final bKeep = keep != null && b.$1.uri.pathSegments.last == keep;
+        if (aKeep != bKeep) return aKeep ? -1 : 1;
+        return b.$2.compareTo(a.$2);
+      });
       for (final (file, _) in entries.skip(maxDiskCacheEntries)) {
         try {
           file.deleteSync();
