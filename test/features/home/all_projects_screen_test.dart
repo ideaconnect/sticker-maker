@@ -10,6 +10,16 @@ import 'package:sticker_maker/core/models/sticker_project.dart';
 import 'package:sticker_maker/core/theme/app_theme.dart';
 import 'package:sticker_maker/features/home/all_projects_screen.dart';
 import 'package:sticker_maker/features/home/project_repository.dart';
+import 'package:sticker_maker/features/packs/pack_repository.dart';
+import 'package:sticker_maker/features/packs/sticker_pack.dart';
+
+/// In-memory pack repo so the delete path's `confirmAndDeleteProject` reads an
+/// empty pack list in a microtask instead of hitting the real path_provider
+/// channel (which never resolves under fake-async pumping).
+class _EmptyPackRepository extends PackRepository {
+  @override
+  Future<List<StickerPack>> list() async => const [];
+}
 
 StickerProject _proj(String name, {bool animated = false}) => StickerProject(
   id: 'id_$name',
@@ -154,7 +164,10 @@ void main() {
     Future<void> pumpWithRepo(WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [projectRepositoryProvider.overrideWithValue(repo)],
+          overrides: [
+            projectRepositoryProvider.overrideWithValue(repo),
+            packRepositoryProvider.overrideWithValue(_EmptyPackRepository()),
+          ],
           child: MaterialApp(
             theme: buildStickerTheme(),
             home: const AllProjectsScreen(),
