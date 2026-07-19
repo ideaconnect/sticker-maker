@@ -1627,7 +1627,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     );
   }
 
-  /// Long-press menu for a frame: duplicate, or delete (when >1 frame).
+  /// Long-press menu for a frame: duplicate, reorder (when not at an edge), or
+  /// delete (when >1 frame).
   Future<void> _showFrameMenu(int index, int frameCount) async {
     final choice = await showModalBottomSheet<String>(
       context: context,
@@ -1645,6 +1646,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
               'Duplicate frame',
               'duplicate',
             ),
+            if (index > 0)
+              _sheetTile(ctx, Icons.arrow_back, 'Move left', 'move_left'),
+            if (index < frameCount - 1)
+              _sheetTile(ctx, Icons.arrow_forward, 'Move right', 'move_right'),
             if (frameCount > 1)
               _sheetTile(ctx, Icons.delete_outline, 'Delete frame', 'delete'),
             const SizedBox(height: 8),
@@ -1655,6 +1660,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     switch (choice) {
       case 'duplicate':
         _controller.duplicateFrame(index);
+      case 'move_left':
+        _controller.reorderFrame(index, index - 1);
+      case 'move_right':
+        _controller.reorderFrame(index, index + 1);
       case 'delete':
         _controller.deleteFrame(index);
     }
