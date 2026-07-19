@@ -41,41 +41,51 @@ class MlKitSegmentationEngine implements SegmentationEngine {
 
   @override
   Future<SegmentationResult> segment(SegmentationRequest request) async {
-    final size = await _resolveSize(request);
-    final width = size.$1;
-    final height = size.$2;
-
-    final SubjectSegmentationResult result;
+    // The ENTIRE body sits inside the try: the interface contract
+    // (segmentation_engine.dart) is that every failure surfaces as a
+    // [SegmentationException], so the registry's fall-through to the bundled
+    // engine can never be bypassed by an untyped throw (2026-07-19 review) —
+    // _resolveSize alone can raise FileSystemException or a decode error.
     try {
-      result = await _segmenterOrCreate.processImage(
+      final size = await _resolveSize(request);
+      final width = size.$1;
+      final height = size.$2;
+
+      final result = await _segmenterOrCreate.processImage(
         InputImage.fromFilePath(request.imagePath),
       );
+
+      final confidence = result.foregroundConfidenceMask;
+      if (confidence == null) {
+        throw SegmentationException(
+          'ML Kit returned no confidence mask',
+          engineId: id,
+        );
+      }
+      if (confidence.length != width * height) {
+        throw SegmentationException(
+          'mask length ${confidence.length} != $width*$height',
+          engineId: id,
+        );
+      }
+
+      return SegmentationResult(
+        mask: maskFromConfidence(confidence, width, height),
+        engineId: id,
+      );
+    } on SegmentationException {
+      rethrow;
     } on PlatformException catch (e) {
       // No Play services, model still downloading, unsupported ABI, …
       throw SegmentationException(
         e.message ?? 'ML Kit segmentation failed',
         engineId: id,
       );
+    } catch (e) {
+      // Everything else: file IO, a corrupt image header, plugin-internal
+      // errors (MissingPluginException, …) — still the typed contract.
+      throw SegmentationException('$e', engineId: id);
     }
-
-    final confidence = result.foregroundConfidenceMask;
-    if (confidence == null) {
-      throw SegmentationException(
-        'ML Kit returned no confidence mask',
-        engineId: id,
-      );
-    }
-    if (confidence.length != width * height) {
-      throw SegmentationException(
-        'mask length ${confidence.length} != $width*$height',
-        engineId: id,
-      );
-    }
-
-    return SegmentationResult(
-      mask: maskFromConfidence(confidence, width, height),
-      engineId: id,
-    );
   }
 
   /// Converts ML Kit's per-pixel foreground confidences (0.0 … 1.0) into an

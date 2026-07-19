@@ -9,6 +9,7 @@ import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
 import '../../core/widgets/responsive_center.dart';
 import '../editor/state/editor_controller.dart';
+import 'project_delete.dart';
 import 'project_repository.dart';
 import 'widgets/project_tile.dart';
 
@@ -45,10 +46,10 @@ class _AllProjectsScreenState extends ConsumerState<AllProjectsScreen> {
     context.pushNamed(Routes.editor);
   }
 
-  Future<void> _deleteProject(String id) async {
-    await ref.read(projectRepositoryProvider).delete(id);
-    ref.invalidate(savedProjectsProvider);
-  }
+  /// Confirms (warning about pack membership) and deletes, cascading the
+  /// project's pack slots so no pack keeps a dangling reference.
+  Future<void> _deleteProject(StickerProject project) =>
+      confirmAndDeleteProject(context, ref, project);
 
   @override
   Widget build(BuildContext context) {
@@ -106,7 +107,7 @@ class _AllProjectsScreenState extends ConsumerState<AllProjectsScreen> {
                             project: p,
                             radius: tokens.radiusCard,
                             onTap: () => _openProject(p),
-                            onDelete: () => _deleteProject(p.id),
+                            onDeleteRequested: () => _deleteProject(p),
                           ),
                       ],
                     );
