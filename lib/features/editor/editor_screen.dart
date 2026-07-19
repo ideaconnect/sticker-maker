@@ -673,6 +673,46 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        // Font & size were model-supported but UI-locked to Bangers 26 (#81).
+        // The chosen size acts as a maximum — the auto-fit (#79) may shrink
+        // long captions to keep them inside the bubble.
+        SizedBox(
+          height: 42,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: AppFonts.stickerFonts.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 9),
+            itemBuilder: (_, i) {
+              final f = AppFonts.stickerFonts[i];
+              final active = bubble.fontFamily == f;
+              return PillChip(
+                label: f,
+                accent: AppColors.pink,
+                selected: active,
+                radius: 12,
+                onTap: () => _controller.updateBubbleLayer(id, fontFamily: f),
+                labelStyle: TextStyle(
+                  fontFamily: f,
+                  fontSize: 16,
+                  color: active ? Colors.white : AppColors.textSecondary,
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 4),
+        LabeledSlider(
+          label: 'Size',
+          value: bubble.fontSize,
+          min: 14,
+          max: 44,
+          accent: AppColors.pink,
+          valueColor: AppColors.textMuted,
+          valueLabel: '${bubble.fontSize.round()}px',
+          onChanged: (v) => _controller.updateBubbleLayer(id, fontSize: v),
+          onChangeEnd: _endSliderEdit,
+        ),
+        const SizedBox(height: 4),
         _swatchRow(
           'Fill',
           bubble.fillColor,

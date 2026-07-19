@@ -105,6 +105,44 @@ void main() {
     expect(third.transform.position, const Offset(304, 304));
   });
 
+  test('clearing bubble text never blanks the layer name (#82)', () {
+    final h = harness(twoLayerProject());
+    final bubble = h.controller.addBubbleLayer(text: 'Hello!');
+    h.controller.updateBubbleLayer(bubble.id, text: '');
+    final updated = h.container
+        .read(editorControllerProvider)
+        .layers
+        .whereType<BubbleLayer>()
+        .single;
+    expect(updated.text, '');
+    expect(updated.name, 'Hello!', reason: 'keeps the last non-empty name');
+  });
+
+  test('bubble edits undo per property group, not as one blob (#82)', () {
+    final h = harness(twoLayerProject());
+    final bubble = h.controller.addBubbleLayer();
+    BubbleLayer current() => h.container
+        .read(editorControllerProvider)
+        .layers
+        .whereType<BubbleLayer>()
+        .single;
+
+    h.controller.updateBubbleLayer(bubble.id, shape: BubbleShape.thought);
+    h.controller.updateBubbleLayer(
+      bubble.id,
+      fillColor: const Color(0xFFFF0000),
+    );
+    expect(current().shape, BubbleShape.thought);
+    expect(current().fillColor, const Color(0xFFFF0000));
+
+    // One undo reverts only the fill; the shape edit is its own step.
+    h.controller.undo();
+    expect(current().fillColor, isNot(const Color(0xFFFF0000)));
+    expect(current().shape, BubbleShape.thought);
+    h.controller.undo();
+    expect(current().shape, BubbleShape.speech);
+  });
+
   test('removeLayer clears selection when the selected layer is removed', () {
     final h = harness(twoLayerProject());
     h.controller.selectLayer('txt');

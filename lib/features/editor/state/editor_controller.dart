@@ -331,21 +331,38 @@ class EditorController extends Notifier<EditorState> {
     Color? strokeColor,
     Color? textColor,
     Offset? tail,
-  }) => _updateLayer(
-    id,
-    coalesce: 'bubble:$id',
-    bubble: (l) => l.copyWith(
-      text: text,
-      name: text,
-      shape: shape,
-      fontFamily: fontFamily,
-      fontSize: fontSize,
-      fillColor: fillColor,
-      strokeColor: strokeColor,
-      textColor: textColor,
-      tail: tail,
-    ),
-  );
+  }) {
+    // Coalesce per property group, not per bubble — otherwise shape → fill →
+    // typing all collapsed into one giant undo step (#82).
+    final group = text != null
+        ? 'text'
+        : shape != null
+        ? 'shape'
+        : tail != null
+        ? 'tail'
+        : fontSize != null
+        ? 'size'
+        : fontFamily != null
+        ? 'font'
+        : 'color';
+    _updateLayer(
+      id,
+      coalesce: 'bubble:$id:$group',
+      bubble: (l) => l.copyWith(
+        text: text,
+        // Mirror the layer name, but never rename to '' when the caption is
+        // cleared (#82) — keep the last non-empty name instead.
+        name: text == null || text.trim().isEmpty ? null : text,
+        shape: shape,
+        fontFamily: fontFamily,
+        fontSize: fontSize,
+        fillColor: fillColor,
+        strokeColor: strokeColor,
+        textColor: textColor,
+        tail: tail,
+      ),
+    );
+  }
 
   void updateImageAdjustments(String id, ImageAdjustments adjustments) =>
       _updateLayer(

@@ -11,6 +11,7 @@ import 'package:sticker_maker/core/theme/app_theme.dart';
 import 'package:sticker_maker/features/editor/editor_screen.dart';
 import 'package:sticker_maker/features/editor/state/editor_controller.dart';
 import 'package:sticker_maker/features/editor/widgets/bubble_view.dart';
+import 'package:sticker_maker/features/editor/widgets/editor_canvas.dart';
 import 'package:sticker_maker/features/home/project_repository.dart';
 
 late Directory _tmp;
@@ -194,12 +195,49 @@ void main() {
     await tester.tap(find.text('Text')); // the Text tool hosts bubble editing
     await tester.pumpAndSettle();
 
-    // Bubble panel, with the three shape presets.
+    // Bubble panel, with the shape presets.
     expect(find.text('Comic bubble'), findsOneWidget);
     expect(find.text('Speech'), findsOneWidget);
     expect(find.text('Thought'), findsOneWidget);
     expect(find.text('Shout'), findsOneWidget);
     // Not the text-layer panel.
     expect(find.text('Tap a font to preview'), findsNothing);
+  });
+
+  testWidgets('bubble panel offers font and size controls (#81)', (
+    tester,
+  ) async {
+    await pumpEditor(tester, _bubbleProject);
+
+    await tester.tap(find.text('Layers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bubble layer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Text'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Size'), findsOneWidget);
+    await tester.tap(find.text('LuckiestGuy')); // second font chip
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(EditorScreen)),
+    );
+    final bubble =
+        container.read(editorControllerProvider).layers.single as BubbleLayer;
+    expect(bubble.fontFamily, 'LuckiestGuy');
+  });
+
+  testWidgets('tapping a bubble on the canvas opens its editor (#82)', (
+    tester,
+  ) async {
+    await pumpEditor(tester, _bubbleProject);
+
+    // Default tool is Adjust; the bubble sits at the canvas center.
+    expect(find.text('Comic bubble'), findsNothing);
+    await tester.tap(find.byType(EditorCanvas));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Comic bubble'), findsOneWidget);
   });
 }

@@ -241,7 +241,13 @@ class _EditorCanvasState extends ConsumerState<EditorCanvas> {
       widget.onEmptyTap();
       return;
     }
-    _controller.selectLayer(_hitTest(editor.layers, pointLogical)?.id);
+    final hit = _hitTest(editor.layers, pointLogical);
+    _controller.selectLayer(hit?.id);
+    // Tapping a bubble opens its editor right away — previously the bubble
+    // panel appeared only if the Text tool happened to be active (#82).
+    if (hit is BubbleLayer && editor.tool != EditorTool.text) {
+      _controller.setTool(EditorTool.text);
+    }
   }
 
   void _onScaleStart(Offset focalLogical, EditorState editor) {
