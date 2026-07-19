@@ -15,6 +15,7 @@ class StickerCaption extends StatelessWidget {
     this.color = Colors.white,
     this.rotation = -0.087, // ~ -5deg
     this.strokeWidth = 3.5,
+    this.scale = 1.0,
     this.decorative = false,
   });
 
@@ -24,6 +25,15 @@ class StickerCaption extends StatelessWidget {
   final Color color;
   final double rotation;
   final double strokeWidth;
+
+  /// Canvas scale (`side / 512`) so the outline thickness, drop-shadow offset
+  /// and letter tracking stay proportional to [fontSize] — matching the 512-px
+  /// export drawn by `StickerRenderer._paintText`, which is the WYSIWYG
+  /// reference. At `1.0` (the export at 512) these equal the reference values
+  /// (3.5-px stroke, `Offset(0, 4)` shadow, `letterSpacing` 1); the editor
+  /// canvas and its thumbnails pass their own smaller scale so the preview no
+  /// longer draws a proportionally chunkier outline than the exported sticker.
+  final double scale;
 
   /// A plain glyph with no outline/shadow — used for emoji & prop layers (#61).
   final bool decorative;
@@ -39,7 +49,7 @@ class StickerCaption extends StatelessWidget {
       fontFamily: fontFamily,
       fontSize: fontSize,
       height: 1,
-      letterSpacing: 1,
+      letterSpacing: 1 * scale,
       fontWeight: FontWeight.w700,
     );
 
@@ -62,11 +72,14 @@ class StickerCaption extends StatelessWidget {
             style: baseStyle.copyWith(
               foreground: Paint()
                 ..style = PaintingStyle.stroke
-                ..strokeWidth = strokeWidth
+                ..strokeWidth = strokeWidth * scale
                 ..strokeJoin = StrokeJoin.round
                 ..color = _strokeColor,
-              shadows: const [
-                Shadow(color: Color(0x40000000), offset: Offset(0, 4)),
+              shadows: [
+                Shadow(
+                  color: const Color(0x40000000),
+                  offset: Offset(0, 4 * scale),
+                ),
               ],
             ),
           ),

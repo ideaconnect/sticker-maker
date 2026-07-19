@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sticker_maker/core/models/frame.dart';
 import 'package:sticker_maker/core/models/layer.dart';
+import 'package:sticker_maker/features/editor/widgets/bubble_view.dart';
 import 'package:sticker_maker/features/export/sticker_renderer.dart';
 import 'package:sticker_maker/features/segmentation/alpha_mask.dart';
 import 'package:sticker_maker/features/segmentation/mask_store.dart';
@@ -68,6 +69,64 @@ void main() {
     expect(image.width, 128);
     expect(image.height, 128);
     image.dispose();
+  });
+
+  test('a pathologically long bubble caption never paints outside the body '
+      '(#79 / WYSIWYG)', () async {
+    // ~1000 characters: past what the body rect holds even at the 6 pt floor,
+    // so the caption must be clamped + clipped to the body in the export path.
+    final overflowing = 'overflowing caption ' * 50;
+    final longFrame = Frame(
+      id: 'f',
+      layers: [BubbleLayer(id: 'b', name: 'B', text: overflowing)],
+    );
+    const emptyFrame = Frame(
+      id: 'f',
+      layers: [BubbleLayer(id: 'b', name: 'B', text: '')],
+    );
+
+    const sz = 512; // the default export size, used below for the pixel math
+    final withText = await StickerRenderer.renderImage(longFrame);
+    final empty = await StickerRenderer.renderImage(emptyFrame);
+    final a = (await withText.toByteData())!.buffer.asUint8List();
+    final b = (await empty.toByteData())!.buffer.asUint8List();
+    withText.dispose();
+    empty.dispose();
+
+    // The bubble sits at the default canvas centre (256,256); its body (caption)
+    // rect maps into the 512-px export as below. Outside this rect the only
+    // thing that changes between the two frames is the caption — so if it is
+    // properly clamped/clipped, every pixel there must be byte-identical.
+    const scale = sz / 512.0;
+    final boxOrigin =
+        const Offset(256, 256) * scale -
+        Offset(
+          kBubbleBaseSize.width * scale / 2,
+          kBubbleBaseSize.height * scale / 2,
+        );
+    final caption = bubbleBodyRect(kBubbleBaseSize * scale)
+        .deflate(10 * scale)
+        .shift(boxOrigin)
+        .inflate(3); // small margin for the anti-aliased clip edge
+
+    var diffOutside = 0;
+    for (var y = 0; y < sz; y++) {
+      for (var x = 0; x < sz; x++) {
+        if (caption.contains(Offset(x.toDouble(), y.toDouble()))) continue;
+        final i = (y * sz + x) * 4;
+        if (a[i] != b[i] ||
+            a[i + 1] != b[i + 1] ||
+            a[i + 2] != b[i + 2] ||
+            a[i + 3] != b[i + 3]) {
+          diffOutside++;
+        }
+      }
+    }
+    expect(
+      diffOutside,
+      0,
+      reason: 'the clamped caption must not paint past the bubble body rect',
+    );
   });
 
   test('a photo layer composites opaque pixels at the centre', () async {
