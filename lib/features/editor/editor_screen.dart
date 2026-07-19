@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show listEquals;
@@ -1169,10 +1170,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         }
         return;
       }
-      final mask = MaskProcessing.process(
-        result.mask,
-        const MaskProcessingOptions(),
-      );
+      // The clean-up chain crunches every pixel of a photo-sized mask — run it
+      // off the UI isolate so the "Working…" spinner actually animates
+      // (docs/reviews/2026-07-19-review.md).
+      final mask = await _processCutoutMask(result.mask);
       final path = await ref.read(maskStoreProvider).save(mask, id: image.id);
       _controller.setImageMask(image.id, path);
       if (mounted) {
@@ -1287,11 +1288,16 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
       );
       final maskPoint = mapper.canvasToMask(pointLogical);
       if (maskPoint == null) return; // missed the photo entirely
-      final result = MaskProcessing.removeObjectAt(
+      // Component labelling + feathered subtract walk the whole mask several
+      // times — off the UI isolate (docs/reviews/2026-07-19-review.md). Still
+      // serialized behind [_strokeLock], so the working mask can't change
+      // underneath the hop.
+      final result = await _removeTappedObject(
         _workingMask!,
         maskPoint.dx.round(),
         maskPoint.dy.round(),
       );
+      if (!mounted) return;
       switch (result.outcome) {
         case RemoveTapOutcome.miss:
           if (mounted) _toast('Nothing to remove there');
@@ -1341,27 +1347,21 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
         _toast("Couldn't find an object there");
         return;
       }
-      // Overlap with what the cutout currently keeps.
-      var kept = 0;
-      var overlap = 0;
-      for (var i = 0; i < current.length; i++) {
-        if (current.alpha[i] > 16) {
-          kept++;
-          if (object.alpha[i] > 128) overlap++;
-        }
-      }
-      if (overlap == 0) {
+      // Overlap with what the cutout currently keeps — a per-pixel pass over
+      // the full mask, so off the UI isolate (docs/reviews/2026-07-19-review.md).
+      final stats = await _maskOverlap(current, object);
+      if (!mounted) return;
+      if (stats.overlap == 0) {
         _toast("Couldn't find an object there");
         return;
       }
-      if (overlap > kept * 0.8) {
+      if (stats.overlap > stats.kept * 0.8) {
         _toast('That looks like your subject — use Erase for fine edits');
         return;
       }
-      final next = MaskProcessing.subtract(
-        current,
-        MaskProcessing.feather(object, 1),
-      );
+      // Feather + subtract are two more full-mask passes — same treatment.
+      final next = await _subtractObject(current, object);
+      if (!mounted) return;
       await _applyRemovedMask(layer, next);
       if (mounted) _toast('Object removed — undo brings it back');
     } catch (_) {
@@ -2295,3 +2295,50 @@ class _PanelHint extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Off-UI-isolate mask helpers (docs/reviews/2026-07-19-review.md): each runs
+// O(width × height) pixel loops over source-resolution masks, which froze the
+// raster thread when run on the UI isolate. An [AlphaMask] is just ints + a
+// Uint8List, so it crosses isolates cheaply.
+//
+// Each helper owns its [Isolate.run] call ON PURPOSE: the sent closure must be
+// created here, in a scope whose context holds only the helper's parameters.
+// Created inline in a `_EditorScreenState` method it would share that method's
+// closure context with the `setState(() => …)` closures, dragging `this` (the
+// whole State) into the isolate message and failing to send at runtime.
+
+/// Full clean-up chain for a fresh AI cut-out result.
+Future<AlphaMask> _processCutoutMask(AlphaMask raw) => Isolate.run(
+  () => MaskProcessing.process(raw, const MaskProcessingOptions()),
+);
+
+/// Tier-1 tap-to-remove: component labelling + feathered subtract (#83).
+Future<({RemoveTapOutcome outcome, AlphaMask? mask})> _removeTappedObject(
+  AlphaMask mask,
+  int x,
+  int y,
+) => Isolate.run(() => MaskProcessing.removeObjectAt(mask, x, y));
+
+/// How much of what the cutout currently keeps ([current] > 16) the SAM
+/// [object] (> 128) covers — drives the "that's your subject" guard (#86).
+Future<({int kept, int overlap})> _maskOverlap(
+  AlphaMask current,
+  AlphaMask object,
+) => Isolate.run(() {
+  var kept = 0;
+  var overlap = 0;
+  for (var i = 0; i < current.length; i++) {
+    if (current.alpha[i] > 16) {
+      kept++;
+      if (object.alpha[i] > 128) overlap++;
+    }
+  }
+  return (kept: kept, overlap: overlap);
+});
+
+/// Subtracts the SAM [object] (with a 1-px feathered seam) from [current].
+Future<AlphaMask> _subtractObject(AlphaMask current, AlphaMask object) =>
+    Isolate.run(
+      () => MaskProcessing.subtract(current, MaskProcessing.feather(object, 1)),
+    );
