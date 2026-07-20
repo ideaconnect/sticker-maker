@@ -37,6 +37,13 @@ ios/Flutter/Flutter.podspec
 key.properties
 .env
 
+# Signing material. The whole directory is ignored, not just *.jks: it also
+# holds the certificate, the key passwords and key.properties, and an
+# extension-by-extension list would silently leak the first file type nobody
+# thought of. Losing the upload key is recoverable through Play support only
+# because Google holds the app signing key — leaking it is not recoverable.
+secrets/
+
 # Model conversion sources: the PyTorch checkpoints are large (u2net.pth is
 # 176 MB, over GitHub's 100 MB limit) and only inputs to the conversion. The
 # shipped artifact is assets/models/u2netp.onnx (committed). Re-fetch the .pth

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sticker_maker/app/app.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
 import 'package:sticker_maker/core/settings/settings_store.dart';
+import 'package:sticker_maker/core/widgets/app_logo.dart';
 import 'package:sticker_maker/features/home/project_repository.dart';
 import 'package:sticker_maker/features/packs/pack_repository.dart';
 import 'package:sticker_maker/features/packs/sticker_pack.dart';
@@ -59,6 +60,14 @@ void main() {
     await pumpApp(tester);
 
     expect(find.text('Sticker Maker'), findsOneWidget);
+    // The header mark is the real logo artwork, not a placeholder glyph.
+    expect(find.byType(AppLogo), findsOneWidget);
+    // ...and it is announced, since it carries the brand rather than decoration.
+    final semantics = tester.ensureSemantics();
+    // Semantics nodes are only built once the handle is held; pump to flush.
+    await tester.pump();
+    expect(find.bySemanticsLabel('Sticker Maker logo'), findsOneWidget);
+    semantics.dispose();
     expect(find.text('New Sticker'), findsOneWidget);
     expect(find.text('Recent stickers'), findsOneWidget);
   });

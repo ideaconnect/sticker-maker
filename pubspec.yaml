@@ -78,7 +78,10 @@ flutter:
   generate: true
 
   assets:
-    - assets/branding/
+    # Only the in-app mark ships: the other assets/branding/* layers are
+    # build-time sources for flutter_launcher_icons / flutter_native_splash,
+    # which bake them into res/ themselves (~1.9 MB that need not be in the APK).
+    - assets/branding/logo.png
     # On-device segmentation fallback weights (#28): the bundled U²-Netp ONNX.
     # Bundled as single files (never the whole dir) so conversion sources —
     # the .pt/.pth checkpoints — never ship in the app bundle.
@@ -122,19 +125,43 @@ flutter:
       fonts:
         - asset: assets/fonts/Rubik-Variable.ttf
 
-# App launcher icon — regenerate with: dart run flutter_launcher_icons
+# Branding regeneration — the launcher icon and the splash come from one master
+# artwork (design/branding/app-icon-master.png). Never edit the PNGs by hand;
+# run these three steps IN ORDER:
+#   1. python tools/build_branding.py           # master -> assets/branding/*
+#   2. dart run flutter_launcher_icons
+#      dart run flutter_native_splash:create    # -> android/app/src/main/res/*
+#   3. python tools/optimize_res.py             # losslessly re-encode res/*
+# Step 3 must follow step 2 every time: both generators re-emit unoptimised
+# RGBA and re-create the byte-identical drawable-night-*/android12splash.png
+# duplicates. It is lossless and idempotent; `--check` fails if it was skipped.
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/branding/icon.png"
-  adaptive_icon_background: "#131019"
+  # The RGB twin of assets/branding/icon.png, not icon.png itself: this
+  # generator box-averages the source down to each mipmap bucket, and an alpha
+  # plane of 255s comes out as 254 at hdpi (float 254.99999999999997 truncated),
+  # which tools/optimize_res.py then cannot strip losslessly — ~1.1 kB of
+  # pointless alpha in the APK. icon.png stays RGBA for the Play listing.
+  image_path: "assets/branding/icon_launcher.png"
+  # Image background, not a flat colour: the artwork's gradient runs edge to
+  # edge so every launcher mask shape sees gradient and never a dark frame.
+  adaptive_icon_background: "assets/branding/adaptive_background.png"
   adaptive_icon_foreground: "assets/branding/icon_foreground.png"
+  # The foreground is already drawn to the 66dp safe circle, so the generator's
+  # default 16 % inset would shrink it a second time.
+  adaptive_icon_foreground_inset: 0
+  # Android 13+ themed icons; without it the launcher tints a desaturated crop
+  # of the full-colour foreground.
+  adaptive_icon_monochrome: "assets/branding/icon_monochrome.png"
   min_sdk_android: 26
 
-# Splash screen — regenerate with: dart run flutter_native_splash:create
+# Splash screen — step 2 of the three-step regeneration documented above.
 flutter_native_splash:
   color: "#131019"
   image: assets/branding/splash.png
   android_12:
     color: "#131019"
-    image: assets/branding/splash.png
+    # The Android 12+ splash icon is masked to the centre 768 px of a 1152 px
+    # canvas, so it needs its own smaller-in-frame artwork.
+    image: assets/branding/splash_android12.png

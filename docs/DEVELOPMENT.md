@@ -17,6 +17,7 @@ This documents how to get a working Sticker Maker build environment. It is **Win
 | Android platform | **android-36** (compileSdk) | Installed via `sdkmanager` |
 | Android build-tools | **36.0.0** | |
 | Android min SDK | **26** (Android 8.0) | App runtime floor |
+| Python | **3.12** | Branding tooling (Pillow **12.3.0** + numpy **1.26.4**, pinned in `tools/requirements.txt`) |
 | Gradle | provided by the Flutter Android template | Uses the Gradle wrapper |
 
 > If `flutter doctor` reports a different required Android platform/build-tools version after a
@@ -98,6 +99,36 @@ flutter emulators --launch sm_test
 Hardware acceleration on Windows uses WHPX (Windows Hypervisor Platform); check it with
 `emulator -accel-check`. Boots take ~20–40s with acceleration.
 
+## Branding assets
+
+`assets/branding/*.png` and everything under `android/app/src/main/res/mipmap*`
+/ `drawable*` are **generated**. Do not hand-edit them — edit
+`design/branding/app-icon-master.png` (the master artwork, not bundled) and
+re-run, in this order:
+
+```bash
+python tools/build_branding.py          # master -> assets/branding/*.png (deps: tools/requirements.txt)
+dart run flutter_launcher_icons         # launcher + adaptive + Android 13 monochrome layers
+dart run flutter_native_splash:create   # splash drawables, styles.xml (incl. night variants)
+python tools/optimize_res.py            # lossless re-encode of the generated res/ PNGs
+```
+
+The last step must follow the two Dart generators every time — both re-emit
+unoptimised RGBA PNGs. It is lossless and idempotent;
+`python tools/optimize_res.py --check` fails if it was skipped, and CI enforces
+it on every PR (`.github/workflows/ci.yaml`, first step of the job). Install the
+Python deps with `python -m pip install -r tools/requirements.txt` so local runs
+match the CI pins — an unpinned Pillow can re-encode a byte smaller and make the
+check disagree with CI.
+
+`tools/build_branding.py` is deterministic (fixed-seed dither) and needs no
+network or ImageMagick; its module docstring explains the layer geometry. The
+generator configs live at the bottom of `pubspec.yaml`. Only
+`assets/branding/logo.png` ships in the Flutter asset bundle (the in-app mark,
+`lib/core/widgets/app_logo.dart`). The launcher label is
+`android/app/src/main/res/values/strings.xml` (`@string/app_name`), intentionally
+untranslated.
+
 ## Release builds
 
 Two supported paths — see `docs/release/building-releases.md` for the full details:
@@ -150,11 +181,14 @@ back to Skia.
 ## Quality gates
 
 ```bash
+python tools/optimize_res.py --check --strict
 dart format --set-exit-if-changed .
 flutter analyze
 flutter test --exclude-tags golden
 ```
 
-CI runs all three on every PR (see `.github/workflows/`). Match them locally before pushing.
+CI runs all four on every PR (see `.github/workflows/`). Match them locally before pushing.
+The `optimize_res.py --check` gate runs first in CI because it needs no toolchain and catches
+the one regression that is otherwise silent: branding regenerated without step 3.
 The E2E suite needs an emulator/device and is run via `tools\run_e2e.ps1` (not yet in CI —
 tracked for a future GitHub Actions Android-emulator job).

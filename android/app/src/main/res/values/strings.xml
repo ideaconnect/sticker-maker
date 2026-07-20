@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher / recents / Settings label. Kept untranslated (a proper noun):
+         lib/l10n/app_pl.arb also leaves appTitle as "Sticker Maker". -->
+    <string name="app_name">Sticker Maker</string>
+</resources>

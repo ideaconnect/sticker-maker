@@ -10,6 +10,7 @@ import '../../core/models/sticker_project.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/theme/sm_tokens.dart';
+import '../../core/widgets/app_logo.dart';
 import '../../core/widgets/name_prompt.dart';
 import '../../core/widgets/responsive_center.dart';
 import '../about/about_sheet.dart';
@@ -211,24 +212,18 @@ class HomeScreen extends ConsumerWidget {
 class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final tokens = context.sm;
     return Row(
       children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            gradient: tokens.logoGradient,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.violet.withValues(alpha: 0.4),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: const Icon(Icons.auto_awesome, size: 22, color: Colors.white),
+        AppLogo(
+          size: 38,
+          radius: 12,
+          shadow: [
+            BoxShadow(
+              color: AppColors.violet.withValues(alpha: 0.4),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
         const SizedBox(width: 10),
         Column(
