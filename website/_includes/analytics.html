@@ -1,0 +1,42 @@
+{%- comment -%}
+  Google Analytics 4 - prior-consent model, double-gated.
+
+  This block emits NOTHING unless both are true:
+    1. jekyll.environment == "production"  (local `jekyll serve` never loads GA)
+    2. site.ga_id is non-empty
+
+  site.ga_id ships EMPTY on purpose, so the deployed site currently loads no
+  analytics at all - not even after Accept. That is deliberate: the maintainer
+  sets an ID in _config.yml when (and if) measurement is wanted, and the consent
+  banner keeps working meanwhile because consent.js no-ops when
+  window.loadGoogleAnalytics is undefined.
+
+  Note the site/app split: the APP collects nothing, ever. This is the website.
+{%- endcomment -%}
+{% if jekyll.environment == "production" and site.ga_id != "" and site.ga_id %}
+<!-- gtag.js is injected ONLY after the visitor Accepts (or on return with a
+     stored, unexpired 'granted' choice), so nothing contacts Google before
+     consent. Reject / no choice => never loaded. See assets/js/consent.js and
+     _includes/consent.html. -->
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){ dataLayer.push(arguments); }
+  window.__gaId = '{{ site.ga_id }}';
+  window.loadGoogleAnalytics = function () {
+    if (window.__gaLoaded) return;
+    window.__gaLoaded = true;
+    var s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://www.googletagmanager.com/gtag/js?id=' + window.__gaId;
+    document.head.appendChild(s);
+    gtag('js', new Date());
+    gtag('consent', 'default', { ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied', analytics_storage: 'granted' });
+    gtag('config', window.__gaId);
+  };
+  // Returning visitor with a valid, unexpired 'granted' choice → load now.
+  try {
+    var __c = JSON.parse(localStorage.getItem('stickermaker-consent') || 'null');
+    if (__c && __c.choice === 'granted' && __c.v === 1 && (Date.now() - __c.ts) < 15552000000) window.loadGoogleAnalytics();
+  } catch (e) {}
+</script>
+{% endif %}

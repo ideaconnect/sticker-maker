@@ -1,0 +1,315 @@
+---
+layout: default
+---
+{%- comment -%}
+  Homepage. Composes its own sections on top of _layouts/default.html (nav +
+  footer live there - never duplicate them here).
+
+  No title in the front matter on purpose: the layout then falls back to
+  "Sticker Maker - Make it stick." for <title>/OG, which is what the homepage
+  wants.
+
+  There are no app screenshots in this repository, so all product imagery below
+  is hand-built from the stylesheet's .phone / .checker / .sticker / .toolbar
+  vocabulary using the app's real design tokens. Every one of those blocks is
+  decorative and carries aria-hidden.
+{%- endcomment -%}
+
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <span class="pill"><span class="dot"></span> One-tap cut-out · On-device AI · No ads, ever</span>
+        <h1>Turn your photos into stickers. <span class="accent">Make it stick.</span></h1>
+        <p class="lead">
+          Make stickers from your own photos in seconds, then send them
+          anywhere. Tap once to lift your subject off its background, add a
+          chunky caption or a comic bubble, drop on emoji, animate it, and
+          export to WhatsApp, Telegram, or a transparent PNG or GIF.
+        </p>
+        <div class="actions">
+          <a class="btn btn-primary" href="{{ site.playstore }}" rel="noopener">Get it on Google Play</a>
+          <a class="btn btn-ghost" href="{{ '/features/' | relative_url }}">See what it does</a>
+        </div>
+        <p class="sub">
+          Paid app. Every feature included. No ads, no subscriptions, no watermarks.
+          <b>Android</b> today, <b>iOS</b> coming.
+        </p>
+      </div>
+
+      <div class="hero-box">
+        <span class="glow" aria-hidden="true"></span>
+
+        {%- comment -%} The Editor screen, rebuilt in CSS. {%- endcomment -%}
+        <div class="phone" aria-hidden="true">
+          <div class="phone-screen">
+            <span class="phone-notch"></span>
+            <div class="phone-bar">
+              <span class="phone-bar-btn">‹</span>
+              <div>
+                <p class="phone-bar-title">Rocky at the park</p>
+                <p class="phone-bar-sub">512 × 512 · transparent</p>
+              </div>
+              <span class="phone-cta sm">Export</span>
+            </div>
+            <div class="phone-body">
+              <div class="phone-canvas checker selected">
+                <span class="sticker round" style="--sticker-size:118px">🐶</span>
+                <span class="phone-handle tl"></span>
+                <span class="phone-handle tr"></span>
+                <span class="phone-handle bl"></span>
+                <span class="phone-handle br"></span>
+              </div>
+              <div class="text-center"><span class="toast">Background removed</span></div>
+            </div>
+            <div class="phone-panel">
+              <p class="phone-panel-title">AI background removal</p>
+              <p>Runs on your device. Your photo is never uploaded.</p>
+              <span class="phone-cta">Remove background</span>
+            </div>
+            <div class="toolbar">
+              <span class="tool tool-layers"><span class="tool-ico">🗂️</span>Layers</span>
+              <span class="tool tool-adjust"><span class="tool-ico">🎛️</span>Adjust</span>
+              <span class="tool tool-text"><span class="tool-ico">💬</span>Text</span>
+              <span class="tool tool-erase"><span class="tool-ico">🧽</span>Erase</span>
+              <span class="tool tool-cutout is-active"><span class="tool-ico">✂️</span>Cut out</span>
+              <span class="tool tool-frames"><span class="tool-ico">🎞️</span>Frames</span>
+            </div>
+          </div>
+        </div>
+
+        {%- comment -%} Die-cut results peeling off the phone. {%- endcomment -%}
+        <span class="sticker sticker-tilt sticker-float pos-tr" style="--tilt:9deg;--bob-y:-13px;--bob-dur:6s" aria-hidden="true">🐱</span>
+        <span class="sticker square sticker-tilt sticker-float pos-l" style="--tilt:-11deg;--bob-y:-9px;--bob-dur:7.5s;--bob-delay:.9s" aria-hidden="true">🎉</span>
+        <span class="sticker caption sticker-tilt sticker-float pos-br" style="--tilt:-6deg;--bob-y:-8px;--bob-dur:6.8s;--bob-delay:.4s" aria-hidden="true">Woof!</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="hero-divider" aria-hidden="true">
+  <span class="line"></span>
+  <span class="mark"><img src="{{ '/assets/img/logo.png' | relative_url }}" alt="" width="28" height="28" loading="lazy" decoding="async"></span>
+  <span class="line"></span>
+</div>
+
+<div class="band reveal">
+  <div class="wrap">
+    <h2>From camera roll to group chat, <span class="accent">in seconds</span>.</h2>
+    <p>Pick a photo, tap once to lift the subject out, caption it, and share. All of it happens on your phone. No upload, no account, nothing waiting on a server.</p>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">Why Sticker Maker</p>
+      <h2>Three things it does differently</h2>
+      <p>Most sticker apps send your photo to a server, then sell you the good parts one unlock at a time. This one goes the other way.</p>
+    </div>
+    <div class="grid reveal">
+      <div class="card tool-cutout">
+        <h3><span class="ico" aria-hidden="true">{% include icon-sparkle.svg %}</span> The cut-out runs on your phone</h3>
+        <p>One tap lifts your subject off its background, and the AI that does it runs on your device. Nothing is sent anywhere to be processed, so it works with no signal at all.</p>
+      </div>
+      <div class="card tool-frames">
+        <h3><span class="ico" aria-hidden="true">🎁</span> One price, the whole app</h3>
+        <p>You buy it once and every feature is yours: cut-out, outlines, text, bubbles, emoji, adjustments, animation, export. No ads, no subscriptions, no in-app purchases, no watermark on your stickers.</p>
+      </div>
+      <div class="card tool-adjust">
+        <h3><span class="ico" aria-hidden="true">🔒</span> Private because there's nothing to collect</h3>
+        <p>No account, no sign-in, no analytics, no advertising IDs. Your photos and projects stay in the app's own storage on your device, and we have no server that could receive them.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pt-0">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">What you can make</p>
+      <h2>Six tools, one canvas</h2>
+      <p>Every tool has its own colour, the same six you see along the bottom of the app.</p>
+    </div>
+    <div class="grid reveal">
+      <div class="card tool-cutout">
+        <h3><span class="ico" aria-hidden="true">✂️</span> Cut out</h3>
+        <p>One-tap background removal - your subject, cut out cleanly. Then add the classic white die-cut outline around it, adjustable to any width.</p>
+      </div>
+      <div class="card tool-text">
+        <h3><span class="ico" aria-hidden="true">💬</span> Text &amp; bubbles</h3>
+        <p>Bold sticker captions and comic speech bubbles in playful fonts, with a thick contrasting outline so they read at sticker size.</p>
+      </div>
+      <div class="card tool-layers">
+        <h3><span class="ico" aria-hidden="true">🗂️</span> Layers</h3>
+        <p>Photos, captions, bubbles, emoji and props all stack as layers. Reorder, hide or delete any of them, and move, scale and rotate each one.</p>
+      </div>
+      <div class="card tool-adjust">
+        <h3><span class="ico" aria-hidden="true">🎛️</span> Adjust</h3>
+        <p>Fine-tune brightness, contrast, saturation, hue and opacity per layer, with a live preview on the canvas.</p>
+      </div>
+      <div class="card tool-erase">
+        <h3><span class="ico" aria-hidden="true">🧽</span> Erase &amp; restore</h3>
+        <p>The AI gets it right almost every time. For the rest, brush away what's left over or paint a missing ear back in.</p>
+      </div>
+      <div class="card tool-frames">
+        <h3><span class="ico" aria-hidden="true">🎞️</span> Frames &amp; GIFs</h3>
+        <p>Turn a few frames into a looping animated sticker, set the playback speed, and export it as a GIF.</p>
+      </div>
+    </div>
+    <p style="margin-top:24px"><a class="btn btn-ghost" href="{{ '/features/' | relative_url }}">See every feature →</a></p>
+  </div>
+</section>
+
+<section class="pt-0">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">Send it anywhere</p>
+      <h2>Made for the chat it's going into</h2>
+      <p>Share to WhatsApp and Telegram through the system share sheet, or save a file and do what you like with it. Group your stickers into packs inside the app, each one tagged with the emoji it stands for.</p>
+    </div>
+    <div class="cta-row reveal">
+      <span class="chip">WhatsApp</span>
+      <span class="chip">Telegram</span>
+      <span class="chip">Transparent PNG</span>
+      <span class="chip">WebP</span>
+      <span class="chip">Animated GIF</span>
+      <span class="chip">Sticker packs, in the app</span>
+      <span class="chip">Anything in the share sheet</span>
+    </div>
+    <p class="muted" style="margin-top:16px">
+      Finished a pack? <b>Add to WhatsApp</b> hands it to WhatsApp's own sticker
+      picker. <b>Add to Telegram</b> sends the whole pack into Telegram with the
+      pack name ready for @Stickers. That one is a guided handoff rather than a
+      single tap, because that's how Telegram builds packs.
+    </p>
+  </div>
+</section>
+
+<section class="pt-0">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">Private by design</p>
+      <h2>Your photos never leave your phone</h2>
+      <p>The app has no servers, no accounts and no analytics. There is nothing for it to send.</p>
+    </div>
+    <div class="grid reveal">
+      <div class="card tool-cutout">
+        <h3><span class="ico" aria-hidden="true">📵</span> Nothing is uploaded</h3>
+        <p>Photos you import, the background removal, your text, frames and packs all happen on your device and stay in the app's private storage.</p>
+        <p>A sticker only leaves when <b>you</b> share it, to the app you picked in the share sheet.</p>
+      </div>
+      <div class="card tool-adjust">
+        <h3><span class="ico" aria-hidden="true">🙅</span> No account, no sign-in</h3>
+        <p>There's nothing to register for and no profile to fill in. Install it, open it, make a sticker.</p>
+        <p>No analytics SDKs, no crash-reporting SDKs, no advertising identifiers.</p>
+      </div>
+      <div class="card tool-layers">
+        <h3><span class="ico" aria-hidden="true">📖</span> Written down, in plain English</h3>
+        <p>On Android the cut-out can use Google ML Kit, which fetches its model through Play Services. That's the model coming down, never your photo going up.</p>
+        <p>The full policy spells out exactly what happens where.</p>
+      </div>
+    </div>
+    <div class="cta-row reveal">
+      <a class="btn btn-ghost" href="{{ '/privacy/' | relative_url }}">Read the privacy policy →</a>
+    </div>
+  </div>
+</section>
+
+<section class="pt-0">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">Why it's paid</p>
+      <h2>Because you're the customer, not the product</h2>
+      <p>An app that's free at the till makes its money somewhere else: from ads, from a subscription, or from the nag screen between you and the feature you wanted. Sticker Maker asks for one payment and then gets out of the way. With nothing to sell, there's no reason to collect anything either.</p>
+    </div>
+    <div class="cta-row reveal">
+      <span class="chip">No ads</span>
+      <span class="chip">No subscriptions</span>
+      <span class="chip">No in-app purchases</span>
+      <span class="chip">No watermarks</span>
+      <span class="chip">No accounts</span>
+    </div>
+  </div>
+</section>
+
+<section id="faq" class="pt-0">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">Before you buy</p>
+      <h2>Questions people ask first</h2>
+    </div>
+    <div class="faq reveal">
+      <details class="faq-item">
+        <summary>Does it work offline?</summary>
+        <div class="faq-body">
+          <p>Yes. Editing, background removal and export all run on your device, so you don't need a connection to make a sticker. On Android the cut-out can use Google ML Kit, which downloads its on-device model once through Play Services. Devices without it fall back to a bundled model.</p>
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>Are my photos uploaded anywhere?</summary>
+        <div class="faq-body">
+          <p>No. Photos you import, the AI cut-out and everything you add on top stay on your device. We have no server that receives them. A sticker leaves your phone only when you share it, and from there it's handled by whichever app you sent it to.</p>
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>Do I need an account?</summary>
+        <div class="faq-body">
+          <p>No. There is no sign-up, no sign-in and no profile. Install the app and start making stickers.</p>
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>Is there a subscription or in-app purchases?</summary>
+        <div class="faq-body">
+          <p>No. It's a one-time purchase and every feature is included: no ads, no subscription, no in-app purchases, no watermark on anything you export. The current price is on the Google Play listing.</p>
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>Does it work with WhatsApp and Telegram?</summary>
+        <div class="faq-body">
+          <p>Yes. You can share stickers to WhatsApp, Telegram or any other app through the system share sheet, or save a transparent PNG, a WebP or an animated GIF and use it however you like. You can also build and organise sticker packs inside Sticker Maker, with per-sticker emoji tags.</p>
+          <p>A finished pack goes further than the share sheet: <b>Add to WhatsApp</b> puts it into WhatsApp's own sticker picker, and <b>Add to Telegram</b> sends the whole pack into Telegram with its name ready for @Stickers, which is the route Telegram gives apps for publishing a pack.</p>
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>When is the iPhone version coming?</summary>
+        <div class="faq-body">
+          <p>iOS is planned. The app is built so the same codebase can ship there, but it isn't out yet and I have no date to give you. Android comes first. The App Store badge on this page becomes a real link the day that changes.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<div class="band reveal">
+  <div class="wrap">
+    <h2>Get Sticker Maker</h2>
+    <p>Android today. One payment, every feature, no ads.</p>
+    <div class="store-badges" style="justify-content:center;margin-top:20px">
+      <a class="store-badge" href="{{ site.playstore }}" rel="noopener">
+        {% include icon-play.svg %}
+        <span class="store-badge-text">
+          <span class="store-badge-sub">Get it on</span>
+          <span class="store-badge-name">Google Play</span>
+        </span>
+      </a>
+      {% if site.appstore_status == "coming-soon" %}
+      <span class="store-badge soon">
+        {% include icon-apple.svg %}
+        <span class="store-badge-text">
+          <span class="store-badge-sub">Coming soon</span>
+          <span class="store-badge-name">App Store</span>
+        </span>
+      </span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="band reveal">
+  <div class="wrap">
+    <h2>Questions or ideas?</h2>
+    <p>Tell me what you'd like Sticker Maker to do next. I read every message.</p>
+    <p style="margin-top:18px"><a class="btn btn-primary" href="{{ '/contact/' | relative_url }}">Get in touch</a></p>
+  </div>
+</div>

@@ -1,0 +1,9 @@
+{%- comment -%}
+  Four-point sparkle with two small companions - the "Cut out" / one-tap
+  background-removal motif.
+{%- endcomment -%}
+<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M13 2.4l1.55 4.32a4 4 0 0 0 2.38 2.38L21.25 10.65l-4.32 1.55a4 4 0 0 0-2.38 2.38L13 18.9l-1.55-4.32a4 4 0 0 0-2.38-2.38L4.75 10.65l4.32-1.55a4 4 0 0 0 2.38-2.38L13 2.4z"/>
+  <path d="M5.4 14.6l.62 1.73c.13.35.4.63.75.75l1.73.62-1.73.62c-.35.13-.63.4-.75.75L5.4 20.8l-.62-1.73a1.4 1.4 0 0 0-.75-.75L2.3 17.7l1.73-.62c.35-.13.63-.4.75-.75l.62-1.73z"/>
+  <path d="M19.1 15.5l.4 1.1c.08.23.26.4.49.49l1.1.4-1.1.4c-.23.08-.4.26-.49.49l-.4 1.1-.4-1.1a.9.9 0 0 0-.49-.49l-1.1-.4 1.1-.4c.23-.08.4-.26.49-.49l.4-1.1z"/>
+</svg>
