@@ -48,14 +48,14 @@ appstore_status: "coming-soon"
 email: bartosz@idct.tech
 # Web3Forms access key for the contact form (client-side POST + hCaptcha).
 # Replace with the real key before the form goes live.
-web3forms_key: "REPLACE-ME-WEB3FORMS-ACCESS-KEY"
+web3forms_key: "ad5786fc-1f19-4bc0-8f26-22ebca9d974b"
 
 # --- Analytics --------------------------------------------------------------
 # Google Analytics 4 measurement ID. Intentionally EMPTY: _includes/analytics.html
 # emits nothing at all unless this is non-empty AND the build is production, so
 # the site ships with zero analytics until the maintainer sets an ID here. The
 # app itself has no analytics of any kind - that is unrelated to this key.
-ga_id: ""
+ga_id: "G-14LYCBCVLS"
 
 # Built with custom layouts under _layouts/; no remote theme, no plugins.
 exclude:

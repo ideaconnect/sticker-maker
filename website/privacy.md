@@ -144,13 +144,25 @@ loaded before you press **Accept** in the cookie banner. If you press Reject, or
 ignore the banner, nothing is requested from Google and no analytics cookies are
 set. The site works the same either way.
 
+{%- comment -%}
+  The two branches below are driven by site.ga_id so this page cannot go stale.
+  It promises to say which of the two states is true, and a hand-maintained
+  sentence would quietly start lying the day analytics is switched on or off.
+{%- endcomment -%}
+{% if site.ga_id and site.ga_id != "" %}
+To be precise about the current state: **analytics is switched on** for this site,
+under measurement ID `{{ site.ga_id }}`. Nothing is still loaded until you press
+Accept. If you press Reject, or ignore the banner, Google Analytics is never
+requested and no analytics cookies are set.
+{% else %}
 To be precise about the current state: **no measurement ID is configured in this
 site's build, so Google Analytics is not loaded at all right now, not even if you
 accept.** Pressing Accept today records your preference and closes the banner,
 nothing more. The paragraphs below describe what would happen *if* analytics is ever
 switched on. This page will keep saying which of the two is true.
+{% endif %}
 
-If it is switched on, it would measure aggregate, anonymous usage (pages viewed,
+When it is switched on, it measures aggregate, anonymous usage (pages viewed,
 rough geography, device and browser type, referring links) to understand which
 pages are useful. Either way we do **not**:
 
@@ -181,10 +193,25 @@ contact page so the challenge can render. That happens independently of your ana
 choice, because the form cannot be submitted without it. Submitting the form therefore
 involves those two services and their own processing. See the
 [Web3Forms privacy policy](https://web3forms.com/privacy) and the
-[hCaptcha privacy policy](https://www.hcaptcha.com/privacy). To be precise about the
-current state again: **the form is switched off in this site's build pending its
-service key, so the contact page offers a plain email link and loads neither
-service.** If you'd rather not use the form, email
+[hCaptcha privacy policy](https://www.hcaptcha.com/privacy).
+{%- comment -%}
+  Same guard as contact.md: Liquid has no `not contains`, so derive a boolean.
+  Keeping the two in step is what stops this page describing a form the contact
+  page is not actually rendering.
+{%- endcomment -%}
+{%- assign w3f = site.web3forms_key | default: "" -%}
+{%- assign form_live = true -%}
+{%- if w3f == "" or w3f contains "REPLACE" -%}{%- assign form_live = false -%}{%- endif -%}
+{% if form_live %}
+To be precise about the current state again: **the form is live**, so the contact
+page loads hCaptcha and submits to Web3Forms. Neither runs anywhere else on the
+site, and neither is involved unless you actually send a message.
+{% else %}
+To be precise about the current state again: **the form is switched off in this
+site's build pending its service key, so the contact page offers a plain email link
+and loads neither service.**
+{% endif %}
+If you'd rather not use the form, email
 **[{{ site.email }}](mailto:{{ site.email }})** directly.
 
 We keep contact emails for as long as it takes to answer you and to keep a record of
