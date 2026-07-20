@@ -221,7 +221,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     // @Stickers): the OS only serves stickers from an installed *pack of 3+*.
     // So "Add to WhatsApp" routes through the pack builder instead of a share.
     if (_target == 'whatsapp') {
-      await _addToWhatsAppPack();
+      await _addToStickerSet(forWhatsApp: true);
       return;
     }
     setState(() => _exporting = true);
@@ -313,15 +313,21 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     }
   }
 
-  /// Sentinel returned by [_showWhatsAppPackSheet] for "create a new pack".
+  /// Sentinel returned by [_showStickerSetSheet] for "create a new set".
   static const _newPackChoice = '__new_pack__';
 
-  /// WhatsApp only serves stickers from an installed *pack of at least 3*, so a
-  /// lone sticker can't cross over like Telegram's single-file @Stickers flow.
-  /// Instead we persist this design and let the user drop it into a new or
-  /// existing pack, then finish in the pack screen where "Add to WhatsApp"
-  /// installs the whole pack via the ContentProvider (#46).
-  Future<void> _addToWhatsAppPack() async {
+  /// Persists this design and drops it into a sticker set — a new one or a
+  /// compatible existing one — then lands in the pack screen, where the set can
+  /// be installed to WhatsApp (ContentProvider, #46) or shared to Telegram.
+  ///
+  /// This is the WhatsApp target's *primary* action ([forWhatsApp] switches the
+  /// sheet's copy to explain why): WhatsApp only serves stickers from an
+  /// installed *pack of at least 3*, so a lone sticker can't cross over like
+  /// Telegram's single-file @Stickers flow. Every other target reaches the same
+  /// flow through the standalone "Add to sticker set" button, so a sticker can
+  /// join a set without first being shared anywhere.
+  Future<void> _addToStickerSet({bool forWhatsApp = false}) async {
+    if (_exporting) return;
     setState(() => _exporting = true);
     try {
       final project = ref.read(editorControllerProvider).project;
@@ -346,7 +352,10 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
           )
           .toList();
 
-      final choice = await _showWhatsAppPackSheet(compatible);
+      final choice = await _showStickerSetSheet(
+        compatible,
+        forWhatsApp: forWhatsApp,
+      );
       if (choice == null || !mounted) return;
 
       final StickerPack base;
@@ -381,16 +390,20 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
         context.pushNamed(Routes.packDetail, pathParameters: {'id': next.id}),
       );
     } catch (_) {
-      if (mounted) showSmToast(context, "Couldn't open the pack — try again");
+      if (mounted) showSmToast(context, "Couldn't open the set — try again");
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
   }
 
-  /// Lets the user start a new WhatsApp pack from this sticker, or drop it into
-  /// a compatible existing one. Returns [_newPackChoice], the chosen
-  /// [StickerPack], or null when dismissed.
-  Future<Object?> _showWhatsAppPackSheet(List<StickerPack> compatible) {
+  /// Lets the user start a new sticker set from this sticker, or drop it into a
+  /// compatible existing one. Returns [_newPackChoice], the chosen
+  /// [StickerPack], or null when dismissed. [forWhatsApp] swaps in the copy
+  /// that explains WhatsApp's pack-of-3 requirement.
+  Future<Object?> _showStickerSetSheet(
+    List<StickerPack> compatible, {
+    required bool forWhatsApp,
+  }) {
     return showModalBottomSheet<Object>(
       context: context,
       backgroundColor: AppColors.card,
@@ -416,21 +429,25 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                   ),
                 ),
               ),
-              const Text(
-                'Add to a WhatsApp pack',
+              Text(
+                forWhatsApp ? 'Add to a WhatsApp pack' : 'Add to sticker set',
                 style: TextStyle(
                   fontFamily: AppFonts.display,
                   fontWeight: FontWeight.w600,
                   fontSize: 18,
-                  color: AppColors.green,
+                  color: _setAccent(forWhatsApp),
                 ),
               ),
               const SizedBox(height: 10),
-              const Text(
-                'WhatsApp only shows stickers that belong to a pack of at '
-                'least 3. Create a pack or add this sticker to one, then send '
-                'the whole pack to WhatsApp.',
-                style: TextStyle(
+              Text(
+                forWhatsApp
+                    ? 'WhatsApp only shows stickers that belong to a pack of '
+                          'at least 3. Create a pack or add this sticker to '
+                          'one, then send the whole pack to WhatsApp.'
+                    : 'Sticker sets group your designs so they can be '
+                          'installed in WhatsApp or handed to Telegram as one '
+                          'pack. A set is all-static or all-animated.',
+                style: const TextStyle(
                   fontFamily: AppFonts.ui,
                   fontSize: 13,
                   height: 1.5,
@@ -439,9 +456,11 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
               ),
               const SizedBox(height: 18),
               GradientButton(
-                label: 'New pack with this sticker',
+                // Kept short: the label sits in a centred Row that overflows on
+                // a 412 dp screen once it runs much past "with this sticker".
+                label: forWhatsApp ? 'Start a new pack' : 'Start a new set',
                 icon: Icons.add,
-                glowColor: AppColors.green,
+                glowColor: _setAccent(forWhatsApp),
                 onPressed: () => Navigator.of(ctx).pop(_newPackChoice),
               ),
               if (compatible.isNotEmpty) ...[
@@ -458,7 +477,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                 ),
                 const SizedBox(height: 10),
                 for (final p in compatible) ...[
-                  _packChoiceRow(ctx, p),
+                  _packChoiceRow(ctx, p, _setAccent(forWhatsApp)),
                   const SizedBox(height: 9),
                 ],
               ],
@@ -469,7 +488,12 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     );
   }
 
-  Widget _packChoiceRow(BuildContext ctx, StickerPack pack) {
+  /// WhatsApp's own green when the sheet is the "Add to WhatsApp" step, the
+  /// neutral pack accent when it's the standalone sticker-set action.
+  static Color _setAccent(bool forWhatsApp) =>
+      forWhatsApp ? AppColors.green : AppColors.violet;
+
+  Widget _packChoiceRow(BuildContext ctx, StickerPack pack, Color accent) {
     return GestureDetector(
       onTap: () => Navigator.of(ctx).pop(pack),
       child: Container(
@@ -486,7 +510,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
               height: 38,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.green.withValues(alpha: 0.16),
+                color: accent.withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(11),
               ),
               child: Icon(
@@ -494,7 +518,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                     ? Icons.gif_box_outlined
                     : Icons.grid_view_rounded,
                 size: 19,
-                color: AppColors.green,
+                color: accent,
               ),
             ),
             const SizedBox(width: 12),
@@ -524,11 +548,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                 ],
               ),
             ),
-            const Icon(
-              Icons.add_circle_outline,
-              size: 20,
-              color: AppColors.green,
-            ),
+            Icon(Icons.add_circle_outline, size: 20, color: accent),
           ],
         ),
       ),
@@ -718,6 +738,20 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                     onPressed: _exporting ? null : _download,
                     padding: const EdgeInsets.all(15),
                   ),
+                  // The WhatsApp target's primary button already *is* this
+                  // flow, so the standalone entry point is offered everywhere
+                  // else — a sticker can join a set without being shared first.
+                  if (_target != 'whatsapp') ...[
+                    const SizedBox(height: 10),
+                    GradientButton(
+                      label: 'Add to sticker set',
+                      icon: Icons.library_add_outlined,
+                      solidColor: AppColors.neutralButton,
+                      foreground: AppColors.textSecondary,
+                      onPressed: _exporting ? null : _addToStickerSet,
+                      padding: const EdgeInsets.all(15),
+                    ),
+                  ],
                 ],
               ),
             ),

@@ -20,8 +20,8 @@ void main() {
     });
 
     test('survives a JSON round-trip', () {
-      final restored = StickerProject.fromJson(base(fps: 0.5).toJson());
-      expect(restored.fps, 0.5);
+      final restored = StickerProject.fromJson(base(fps: 2.5).toJson());
+      expect(restored.fps, 2.5);
     });
 
     test('pre-fps manifests (no fps key) default to defaultFps', () {

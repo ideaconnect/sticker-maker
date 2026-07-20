@@ -166,9 +166,9 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   void _restartPlayTimer() {
     _playTimer?.cancel();
     // Preview at the project's fps — the same rate every export path uses.
-    // Upper bound 8000 ms lets the 0.25 fps slow-motion preset play back too.
+    // Upper bound 1000 ms matches the slowest preset (1 fps).
     final fps = ref.read(editorControllerProvider).project.fps;
-    final ms = (1000 / fps).round().clamp(20, 8000);
+    final ms = (1000 / fps).round().clamp(20, 1000);
     _playTimer = Timer.periodic(Duration(milliseconds: ms), (_) {
       final project = ref.read(editorControllerProvider).project;
       if (project.frameCount <= 1) {
@@ -186,13 +186,14 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     if (_isPlaying && mounted) setState(() => _isPlaying = false);
   }
 
-  /// Discrete playback / export speeds, including the sub-1 fps slow-motion
-  /// presets. The selected value drives both the preview timer and every
-  /// export path (WYSIWYG).
-  static const List<double> _fpsPresets = [0.25, 0.5, 1, 2, 4, 8, 12, 16, 24];
+  /// Discrete playback / export speeds. The selected value drives both the
+  /// preview timer and every export path (WYSIWYG). 1 fps is the floor: sub-1
+  /// rates can't survive Telegram's 3 s .webm cap (see
+  /// [StickerProject.minFps]).
+  static const List<double> _fpsPresets = [1, 2, 4, 8, 12, 16, 24];
 
-  /// "0.25", "0.5", "1", "12" — drops the trailing ".0" on whole rates.
-  static String _fpsLabel(double fps) => fps < 1 ? '$fps' : '${fps.round()}';
+  /// "1", "12" — drops the trailing ".0" on whole rates.
+  static String _fpsLabel(double fps) => '${fps.round()}';
 
   Widget _fpsControl(EditorState editor) {
     final fps = editor.project.fps;

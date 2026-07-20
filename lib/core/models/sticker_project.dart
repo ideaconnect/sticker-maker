@@ -21,9 +21,12 @@ class StickerProject {
   /// preview and every export path so what you preview is what you get.
   static const double defaultFps = 8;
 
-  /// Frame rate bounds. Sub-1 rates give slow, deliberate stickers; the upper
-  /// bound matches the messengers' 30 fps cap.
-  static const double minFps = 0.25;
+  /// Frame rate bounds. 1 fps (1 s/frame) is the slowest rate every target can
+  /// actually represent: Telegram's video sticker is capped at 3 s total, so a
+  /// sub-1 rate can't even fit two frames and the encode degrades into a single
+  /// still that overruns the cap. The upper bound matches the messengers'
+  /// 30 fps limit.
+  static const double minFps = 1;
   static const double maxFps = 30;
 
   /// Current on-disk manifest version. Bump when the JSON shape changes and add

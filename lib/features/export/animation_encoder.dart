@@ -73,9 +73,14 @@ class FramePlan {
 abstract final class AnimationPlanner {
   AnimationPlanner._();
 
-  /// Slowest allowed rate: 0.25 fps = 4 s/frame, matching the editor's
-  /// slow-motion presets. (Duration caps below may still drop frames.)
-  static const double minFps = 0.25;
+  /// Slowest allowed rate: 1 fps = 1 s/frame, matching the editor's presets.
+  ///
+  /// Sub-1 rates are deliberately not supported. Telegram's .webm sticker is
+  /// capped at 3 s, so 0.5 fps (2 s/frame) leaves room for a single frame and
+  /// 0.25 fps (4 s/frame) produces a still clip that already breaks the cap —
+  /// the "slow motion" silently becomes "not animated, and rejected".
+  /// (Duration caps below may still drop frames.)
+  static const double minFps = 1;
 
   static FramePlan plan(int frameCount, double fps, AnimationSpec spec) {
     assert(frameCount > 0, 'need at least one frame');

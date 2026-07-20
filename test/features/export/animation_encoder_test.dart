@@ -49,19 +49,20 @@ void main() {
       expect(plan.frameDurationMs, greaterThanOrEqualTo(8));
     });
 
-    test('supports sub-1 fps slow motion (0.25 fps = 4 s/frame)', () {
-      // Regression: fps used to be clamped to a 1.0 floor, so 0.25 fps snapped
-      // to 1000 ms/frame. WhatsApp allows up to 10 s, so 4 s/frame survives.
+    test('sub-1 fps is floored at 1 fps (1 s/frame)', () {
+      // Sub-1 rates can't be represented by the targets: at 0.25 fps a single
+      // frame would already run 4 s, past Telegram's 3 s cap, and the "slow
+      // motion" would collapse to one still. The floor keeps them animated.
       final plan = AnimationPlanner.plan(2, 0.25, AnimationSpec.whatsappWebp);
-      expect(plan.frameDurationMs, 4000);
+      expect(plan.frameDurationMs, 1000);
+      expect(plan.frameCount, 2);
     });
 
-    test('the duration cap still trims slow-motion frames for Telegram', () {
-      // 0.25 fps = 4 s/frame, but Telegram caps at 3 s → only the first frame
-      // fits.
-      final plan = AnimationPlanner.plan(4, 0.25, AnimationSpec.telegramWebm);
-      expect(plan.frameDurationMs, 4000);
-      expect(plan.frameCount, 1);
+    test('1 fps still fits Telegram: 3 frames inside the 3 s cap', () {
+      final plan = AnimationPlanner.plan(4, 1, AnimationSpec.telegramWebm);
+      expect(plan.frameDurationMs, 1000);
+      expect(plan.frameCount, 3);
+      expect(plan.totalSeconds, lessThanOrEqualTo(3.0));
     });
   });
 

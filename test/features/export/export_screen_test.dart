@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:sticker_maker/app/router.dart';
 import 'package:sticker_maker/core/models/frame.dart';
 import 'package:sticker_maker/core/models/layer.dart';
 import 'package:sticker_maker/core/models/sticker_project.dart';
@@ -16,6 +18,9 @@ import 'package:sticker_maker/features/export/animation_encoder.dart';
 import 'package:sticker_maker/features/export/export_screen.dart';
 import 'package:sticker_maker/features/export/static_webp_encoder.dart';
 import 'package:sticker_maker/features/export/sticker_encoder.dart';
+import 'package:sticker_maker/features/home/project_repository.dart';
+import 'package:sticker_maker/features/packs/pack_repository.dart';
+import 'package:sticker_maker/features/packs/sticker_pack.dart';
 
 import 'webp_fixtures.dart';
 
@@ -126,6 +131,35 @@ class _RacingAnimatedExport extends AnimatedExportService {
     webpEncodes++;
     return EncodedSticker(bytes: Uint8List(3), size: 512, format: 'webp');
   }
+}
+
+/// In-memory pack store so the "Add to sticker set" flow runs without file IO.
+class _FakePackRepository extends PackRepository {
+  _FakePackRepository([List<StickerPack> initial = const []]) {
+    for (final p in initial) {
+      _store[p.id] = p;
+    }
+  }
+
+  final Map<String, StickerPack> _store = {};
+
+  @override
+  Future<void> save(StickerPack pack) async => _store[pack.id] = pack;
+  @override
+  Future<List<StickerPack>> list() async => _store.values.toList();
+  @override
+  Future<StickerPack?> load(String id) async => _store[id];
+  @override
+  Future<void> delete(String id) async => _store.remove(id);
+}
+
+/// Swallows the force-save the sticker-set flow does before referencing the
+/// project by id.
+class _FakeProjectRepository extends ProjectRepository {
+  final saved = <StickerProject>[];
+
+  @override
+  Future<void> save(StickerProject project) async => saved.add(project);
 }
 
 /// Captures saveToDownloads calls so the download flow runs without the
@@ -278,6 +312,121 @@ void main() {
       expect(find.text('Add to WhatsApp'), findsOneWidget);
     },
   );
+
+  group('Add to sticker set', () {
+    /// The export screen inside a router that owns the pack-detail destination,
+    /// so the flow's final `pushNamed` resolves.
+    Future<_FakePackRepository> pump(
+      WidgetTester tester, {
+      List<StickerPack> packs = const [],
+    }) async {
+      final repo = _FakePackRepository(packs);
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(path: '/', builder: (_, _) => const ExportScreen()),
+          GoRoute(
+            path: '/pack/:id',
+            name: Routes.packDetail,
+            builder: (_, state) =>
+                Scaffold(body: Text('pack:${state.pathParameters['id']}')),
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            editorControllerProvider.overrideWith(
+              () => EditorController(_project),
+            ),
+            packRepositoryProvider.overrideWithValue(repo),
+            projectRepositoryProvider.overrideWithValue(
+              _FakeProjectRepository(),
+            ),
+          ],
+          child: MaterialApp.router(
+            theme: buildStickerTheme(),
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return repo;
+    }
+
+    /// The flow keeps the primary button in its busy state (a looping spinner)
+    /// for as long as the sheet is up, so `pumpAndSettle` would never return.
+    Future<void> settle(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    /// Scrolls the bottom action into view and taps it.
+    Future<void> tapAddToSet(WidgetTester tester) async {
+      await tester.ensureVisible(find.text('Add to sticker set'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add to sticker set'));
+      await settle(tester);
+    }
+
+    testWidgets('is offered for every target except WhatsApp, whose primary '
+        'action already is this flow', (tester) async {
+      await pump(tester);
+
+      // Telegram (default) — the standalone entry point is there.
+      expect(find.text('Add to sticker set'), findsOneWidget);
+
+      await tester.tap(find.text('WhatsApp'));
+      await tester.pumpAndSettle();
+
+      // WhatsApp's primary button IS the flow; no duplicate below Download.
+      expect(find.text('Add to sticker set'), findsNothing);
+      expect(find.text('Add to WhatsApp'), findsOneWidget);
+    });
+
+    testWidgets('creating a new set persists it and lands in the pack', (
+      tester,
+    ) async {
+      final repo = await pump(tester);
+
+      await tapAddToSet(tester);
+
+      // Generic copy, not the WhatsApp pack-of-3 explanation.
+      expect(find.text('Add to sticker set'), findsWidgets);
+      expect(find.text('Add to a WhatsApp pack'), findsNothing);
+
+      await tester.tap(find.text('Start a new set'));
+      await settle(tester);
+
+      await tester.enterText(find.byType(TextField), 'Doggos');
+      await tester.tap(find.text('Create'));
+      await settle(tester);
+
+      final packs = await repo.list();
+      expect(packs, hasLength(1));
+      expect(packs.single.name, 'Doggos');
+      expect(packs.single.stickers.single.projectId, _project.id);
+      expect(packs.single.animated, isFalse); // single-frame project
+      expect(find.text('pack:${packs.single.id}'), findsOneWidget);
+    });
+
+    testWidgets('offers a compatible existing set to add to', (tester) async {
+      final repo = await pump(
+        tester,
+        packs: [const StickerPack(id: 'pack1', name: 'Doggos')],
+      );
+
+      await tapAddToSet(tester);
+
+      expect(find.text('OR ADD TO'), findsOneWidget);
+      await tester.tap(find.text('Doggos'));
+      await settle(tester);
+
+      final pack = (await repo.list()).single;
+      expect(pack.stickers.single.projectId, _project.id);
+      expect(find.text('pack:pack1'), findsOneWidget);
+    });
+  });
 
   testWidgets('a stale slow estimate never overwrites a fresh fast one', (
     tester,

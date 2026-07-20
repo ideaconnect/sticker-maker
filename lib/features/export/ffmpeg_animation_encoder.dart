@@ -83,9 +83,9 @@ abstract class _FfmpegAnimationEncoder implements AnimationEncoder {
     required bool loop,
   }) {
     final durationMs = frames.first.durationMs.clamp(1, 10000);
-    // Floor at 0.25 fps (4 s/frame) so slow-motion stickers keep their timing
-    // instead of snapping back to 1 fps.
-    final fps = (1000 / durationMs).clamp(0.25, 30).toStringAsFixed(3);
+    // Floor at 1 fps (1 s/frame) — the slowest rate the planner can hand us
+    // and the slowest the messengers' duration caps can carry.
+    final fps = (1000 / durationMs).clamp(1, 30).toStringAsFixed(3);
     return '-y -framerate $fps -i ${dir.path}/%d.png '
         '${codecArgs(quality: quality, loop: loop)} $outPath';
   }
