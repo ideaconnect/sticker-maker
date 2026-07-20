@@ -1,0 +1,5 @@
+{%- comment -%}Envelope - contact links and the contact form's submit button.{%- endcomment -%}
+<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M3.6 5h16.8c1 0 1.6.6 1.6 1.5v.4l-10 5.6L2 6.9v-.4C2 5.6 2.6 5 3.6 5z"/>
+  <path d="M2 8.9l9.5 5.3c.31.18.69.18 1 0L22 8.9v8.6c0 .9-.6 1.5-1.6 1.5H3.6c-1 0-1.6-.6-1.6-1.5V8.9z"/>
+</svg>
