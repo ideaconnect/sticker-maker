@@ -149,13 +149,16 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
             _target == 'telegram'
                 ? AnimationSpec.telegramWebm
                 : AnimationSpec.whatsappWebp,
+            fps: project.fps,
           );
     }
     if (_useGif(project)) {
       // Honor the Static/Animated toggle: Static exports only the current frame
-      // as a single-frame (still) GIF; Animated exports the full clip.
+      // as a single-frame (still) GIF; Animated exports the full clip. The GIF
+      // plays back at the project's chosen fps — same rate as the editor
+      // preview (WYSIWYG); a still GIF ignores it.
       final frames = _animated ? project.frames : [project.currentFrame];
-      return ref.read(gifEncoderProvider)(frames, fps: 12);
+      return ref.read(gifEncoderProvider)(frames, fps: project.fps);
     }
     if (_target == 'whatsapp') {
       // WhatsApp's static cap is 100 KB at *exactly* 512×512 — fit it via the

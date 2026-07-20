@@ -12,9 +12,19 @@ class StickerProject {
     required this.name,
     required this.frames,
     this.currentFrameIndex = 0,
+    this.fps = defaultFps,
     this.createdAt,
     this.updatedAt,
   });
+
+  /// Playback / export frame rate default. Kept in sync between the editor
+  /// preview and every export path so what you preview is what you get.
+  static const double defaultFps = 8;
+
+  /// Frame rate bounds. Sub-1 rates give slow, deliberate stickers; the upper
+  /// bound matches the messengers' 30 fps cap.
+  static const double minFps = 0.25;
+  static const double maxFps = 30;
 
   /// Current on-disk manifest version. Bump when the JSON shape changes and add
   /// a migration in [fromJson].
@@ -27,6 +37,10 @@ class StickerProject {
   final String name;
   final List<Frame> frames;
   final int currentFrameIndex;
+
+  /// Frames per second for preview playback and animated export. Clamped to
+  /// [[minFps], [maxFps]] wherever it is set.
+  final double fps;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -64,6 +78,7 @@ class StickerProject {
     String? name,
     List<Frame>? frames,
     int? currentFrameIndex,
+    double? fps,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -72,6 +87,7 @@ class StickerProject {
       name: name ?? this.name,
       frames: frames ?? this.frames,
       currentFrameIndex: currentFrameIndex ?? this.currentFrameIndex,
+      fps: fps ?? this.fps,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -82,6 +98,7 @@ class StickerProject {
     'id': id,
     'name': name,
     'currentFrameIndex': currentFrameIndex,
+    'fps': fps,
     'createdAt': createdAt?.toIso8601String(),
     'updatedAt': updatedAt?.toIso8601String(),
     'frames': frames.map((f) => f.toJson()).toList(),
@@ -100,6 +117,11 @@ class StickerProject {
       id: json['id'] as String,
       name: json['name'] as String,
       currentFrameIndex: json['currentFrameIndex'] as int? ?? 0,
+      // Pre-fps manifests default to [defaultFps]; clamp guards bad data.
+      fps: ((json['fps'] as num?)?.toDouble() ?? defaultFps).clamp(
+        minFps,
+        maxFps,
+      ),
       createdAt: _parseDate(json['createdAt']),
       updatedAt: _parseDate(json['updatedAt']),
       frames: (json['frames'] as List)
@@ -117,6 +139,7 @@ class StickerProject {
       other.id == id &&
       other.name == name &&
       other.currentFrameIndex == currentFrameIndex &&
+      other.fps == fps &&
       other.createdAt == createdAt &&
       other.updatedAt == updatedAt &&
       listEquals(other.frames, frames);
@@ -126,6 +149,7 @@ class StickerProject {
     id,
     name,
     currentFrameIndex,
+    fps,
     createdAt,
     updatedAt,
     Object.hashAll(frames),

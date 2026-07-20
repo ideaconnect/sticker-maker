@@ -73,9 +73,13 @@ class FramePlan {
 abstract final class AnimationPlanner {
   AnimationPlanner._();
 
+  /// Slowest allowed rate: 0.25 fps = 4 s/frame, matching the editor's
+  /// slow-motion presets. (Duration caps below may still drop frames.)
+  static const double minFps = 0.25;
+
   static FramePlan plan(int frameCount, double fps, AnimationSpec spec) {
     assert(frameCount > 0, 'need at least one frame');
-    final effectiveFps = fps.clamp(1.0, spec.maxFps);
+    final effectiveFps = fps.clamp(minFps, spec.maxFps);
     final durationMs = (1000 / effectiveFps).round().clamp(
       spec.minFrameMs == 0 ? 1 : spec.minFrameMs,
       10000,

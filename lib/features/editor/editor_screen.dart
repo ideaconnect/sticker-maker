@@ -62,7 +62,6 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
 
   // Transient tool UI state not yet backed by the model.
   bool _isPlaying = false; // frame playback (M4)
-  double _fps = 8; // (M4)
   Timer? _playTimer;
   bool _onionSkin = false; // ghost the previous frame (M4 #37)
   bool _eraseMode = true; // erase vs restore (M2)
@@ -121,7 +120,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
   /// persisted except the transient current-frame index (frame navigation and
   /// playback must not count as edits).
   bool _sameDocument(StickerProject a, StickerProject b) =>
-      a.id == b.id && a.name == b.name && listEquals(a.frames, b.frames);
+      a.id == b.id &&
+      a.name == b.name &&
+      a.fps == b.fps &&
+      listEquals(a.frames, b.frames);
 
   /// Debounced auto-save of the document to disk.
   void _scheduleSave(StickerProject project) {
@@ -163,7 +165,10 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
 
   void _restartPlayTimer() {
     _playTimer?.cancel();
-    final ms = (1000 / _fps).round().clamp(20, 1000);
+    // Preview at the project's fps — the same rate every export path uses.
+    // Upper bound 8000 ms lets the 0.25 fps slow-motion preset play back too.
+    final fps = ref.read(editorControllerProvider).project.fps;
+    final ms = (1000 / fps).round().clamp(20, 8000);
     _playTimer = Timer.periodic(Duration(milliseconds: ms), (_) {
       final project = ref.read(editorControllerProvider).project;
       if (project.frameCount <= 1) {
@@ -179,6 +184,62 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
     _playTimer?.cancel();
     _playTimer = null;
     if (_isPlaying && mounted) setState(() => _isPlaying = false);
+  }
+
+  /// Discrete playback / export speeds, including the sub-1 fps slow-motion
+  /// presets. The selected value drives both the preview timer and every
+  /// export path (WYSIWYG).
+  static const List<double> _fpsPresets = [0.25, 0.5, 1, 2, 4, 8, 12, 16, 24];
+
+  /// "0.25", "0.5", "1", "12" — drops the trailing ".0" on whole rates.
+  static String _fpsLabel(double fps) => fps < 1 ? '$fps' : '${fps.round()}';
+
+  Widget _fpsControl(EditorState editor) {
+    final fps = editor.project.fps;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Speed',
+              style: TextStyle(
+                fontFamily: AppFonts.ui,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            Text(
+              '${_fpsLabel(fps)} fps',
+              style: const TextStyle(
+                fontFamily: AppFonts.ui,
+                fontSize: 12,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final preset in _fpsPresets)
+              PillChip(
+                label: _fpsLabel(preset),
+                accent: AppColors.orange,
+                selected: (preset - fps).abs() < 0.001,
+                onTap: () {
+                  _controller.setFps(preset);
+                  if (_isPlaying) _restartPlayTimer();
+                },
+              ),
+          ],
+        ),
+      ],
+    );
   }
 
   @override
@@ -1549,6 +1610,7 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             itemBuilder: (_, i) {
               if (i == frames.length) return _addFrameButton();
               return _FrameThumb(
+                key: ValueKey('frame-thumb-${frames[i].id}'),
                 index: i,
                 frame: frames[i],
                 active: i == current,
@@ -1558,20 +1620,8 @@ class _EditorScreenState extends ConsumerState<EditorScreen> {
             },
           ),
         ),
-        const SizedBox(height: 12),
-        LabeledSlider(
-          label: 'Speed',
-          value: _fps,
-          min: 2,
-          max: 24,
-          accent: AppColors.orange,
-          valueColor: AppColors.textMuted,
-          valueLabel: '${_fps.round()} fps',
-          onChanged: (v) {
-            setState(() => _fps = v);
-            if (_isPlaying) _restartPlayTimer();
-          },
-        ),
+        const SizedBox(height: 14),
+        _fpsControl(editor),
         if (frames.length > 1)
           Padding(
             padding: const EdgeInsets.only(top: 6),
@@ -2226,6 +2276,7 @@ class _FrameCounter extends StatelessWidget {
 /// over a checkerboard, an active highlight, and a numbered badge.
 class _FrameThumb extends StatelessWidget {
   const _FrameThumb({
+    super.key,
     required this.index,
     required this.frame,
     required this.active,

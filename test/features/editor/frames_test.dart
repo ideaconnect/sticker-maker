@@ -328,9 +328,9 @@ void main() {
       await tester.tap(find.text('Frames'));
       await tester.pumpAndSettle();
 
-      // Long-press the first frame thumb (label '1') to open its menu. It sits
-      // at the left edge, so only "Move right" is offered.
-      await tester.longPress(find.text('1'));
+      // Long-press the first frame thumb (f0, leftmost) to open its menu. It
+      // sits at the left edge, so only "Move right" is offered.
+      await tester.longPress(find.byKey(const ValueKey('frame-thumb-f0')));
       await tester.pumpAndSettle();
       expect(find.text('Move left'), findsNothing);
       expect(find.text('Move right'), findsOneWidget);

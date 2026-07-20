@@ -48,6 +48,21 @@ void main() {
       final plan = AnimationPlanner.plan(4, 200, AnimationSpec.whatsappWebp);
       expect(plan.frameDurationMs, greaterThanOrEqualTo(8));
     });
+
+    test('supports sub-1 fps slow motion (0.25 fps = 4 s/frame)', () {
+      // Regression: fps used to be clamped to a 1.0 floor, so 0.25 fps snapped
+      // to 1000 ms/frame. WhatsApp allows up to 10 s, so 4 s/frame survives.
+      final plan = AnimationPlanner.plan(2, 0.25, AnimationSpec.whatsappWebp);
+      expect(plan.frameDurationMs, 4000);
+    });
+
+    test('the duration cap still trims slow-motion frames for Telegram', () {
+      // 0.25 fps = 4 s/frame, but Telegram caps at 3 s → only the first frame
+      // fits.
+      final plan = AnimationPlanner.plan(4, 0.25, AnimationSpec.telegramWebm);
+      expect(plan.frameDurationMs, 4000);
+      expect(plan.frameCount, 1);
+    });
   });
 
   group('encoder seam + budget search', () {

@@ -65,6 +65,26 @@ class _FakeAnimatedExport extends AnimatedExportService {
   );
 }
 
+/// Records the fps the screen asked to encode at (default 12 would prove the
+/// project's fps was ignored).
+class _RecordingFpsExport extends AnimatedExportService {
+  double? lastFps;
+
+  @override
+  Future<EncodedSticker> encode(
+    StickerProject project,
+    AnimationSpec spec, {
+    double fps = 12,
+  }) async {
+    lastFps = fps;
+    return EncodedSticker(
+      bytes: Uint8List.fromList(const [1, 2, 3]),
+      size: 512,
+      format: spec.format,
+    );
+  }
+}
+
 /// Runs the REAL budget pipeline (with an injected fake lossy encoder) and
 /// records what the screen's WhatsApp path actually emits.
 class _RecordingBudgetEncoder extends StaticWebpBudgetEncoder {
@@ -405,6 +425,57 @@ void main() {
       expect(find.text('Share sticker'), findsOneWidget);
     },
   );
+
+  testWidgets("the project's fps reaches both the GIF and the animated encoder "
+      '(not a hardcoded rate)', (tester) async {
+    TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .views
+        .first
+        .physicalSize = const Size(
+      824,
+      2600,
+    );
+
+    final slow = _animatedProject.copyWith(fps: 2);
+    double? gifFps;
+    Future<EncodedSticker> fakeGif(
+      List<Frame> frames, {
+      double fps = 12,
+    }) async {
+      gifFps = fps;
+      return EncodedSticker(
+        bytes: Uint8List.fromList(const [1, 2, 3]),
+        size: 512,
+        format: 'gif',
+      );
+    }
+
+    final animated = _RecordingFpsExport();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          editorControllerProvider.overrideWith(() => EditorController(slow)),
+          animatedExportServiceProvider.overrideWithValue(animated),
+          gifEncoderProvider.overrideWithValue(fakeGif),
+        ],
+        child: MaterialApp(
+          theme: buildStickerTheme(),
+          home: const ExportScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Screen entry runs the Telegram (animated) estimate — it must encode at
+    // the project's 2 fps, not the old hardcoded 12.
+    expect(animated.lastFps, 2);
+
+    // The GIF path forwards the same rate.
+    await tester.tap(find.text('GIF'));
+    await tester.pump();
+    expect(gifFps, 2);
+  });
 
   testWidgets('PNG and WebP targets hide the Static/Animated toggle', (
     tester,
