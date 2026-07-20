@@ -1,7 +1,47 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Play upload signing. The keystore and its passwords live in <repo>/secrets/,
+// which .gitignore excludes as a whole directory — no key material is ever
+// committed, and the path is absolute in key.properties so it resolves from any
+// working directory or git worktree.
+//
+// The file is deliberately optional: a fresh clone or a CI job without the
+// secrets must still be able to run `flutter run --release` and the Robolectric
+// suite. When it is missing we fall back to the debug keys and warn loudly,
+// because a debug-signed artifact looks perfectly normal locally and is only
+// rejected once you try to upload it.
+// SIGNING_KEY_PROPERTIES lets a build that is not rooted in the developer's main
+// checkout (a git worktree, a CI runner, a release box) point at the real file.
+// secrets/ is gitignored, so it does NOT exist in a fresh worktree, and the
+// repo-relative default silently resolves to nothing there.
+val keystorePropertiesFile =
+    System.getenv("SIGNING_KEY_PROPERTIES")?.let { file(it) }
+        ?: rootProject.file("../secrets/key.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        FileInputStream(keystorePropertiesFile).use { load(it) }
+    }
+}
+val hasUploadKey = keystorePropertiesFile.exists()
+
+// Hard-fail the Play artifact rather than emit a debug-signed one. `flutter build`
+// swallows Gradle's configuration-time warnings, so a warning here is invisible in
+// practice: the build reports success and you only learn the truth when Play
+// rejects the upload. `assembleRelease` is deliberately NOT covered - it backs
+// `flutter run --release`, which must keep working without the secrets.
+if (!hasUploadKey && gradle.startParameter.taskNames.any { it.contains("bundleRelease", true) }) {
+    throw GradleException(
+        "Cannot build a release bundle: no upload key at $keystorePropertiesFile.\n" +
+            "The signing material lives in <repo>/secrets/ (gitignored). Either build from a " +
+            "checkout that has it, or set SIGNING_KEY_PROPERTIES to its absolute path.",
+    )
 }
 
 android {
@@ -36,11 +76,32 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasUploadKey) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                // The upload keystore is PKCS#12 (keytool deprecates JKS). Stated
+                // explicitly rather than relying on the JDK's default store type,
+                // so the build does not change meaning under a different JDK.
+                storeType = keystoreProperties.getProperty("storeType") ?: "PKCS12"
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasUploadKey) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn(
+                    "WARNING: secrets/key.properties not found — signing the release build " +
+                        "with DEBUG keys. This artifact cannot be uploaded to Google Play.",
+                )
+                signingConfigs.getByName("debug")
+            }
 
             // Release builds shrink + obfuscate. ONNX Runtime and ML Kit resolve
             // their Java classes by name via JNI, so they must be kept explicitly

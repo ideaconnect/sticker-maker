@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/router.dart';
 import '../../core/models/frame.dart';
@@ -13,6 +14,8 @@ import '../../core/theme/sm_tokens.dart';
 import '../../core/widgets/app_logo.dart';
 import '../../core/widgets/name_prompt.dart';
 import '../../core/widgets/responsive_center.dart';
+import '../../core/widgets/sm_toast.dart';
+import '../about/about_data.dart';
 import '../about/about_sheet.dart';
 import '../editor/state/editor_controller.dart';
 import '../templates/template_picker.dart';
@@ -209,6 +212,26 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
+/// Opens the project's Discord invite in the Discord app, or the browser if it
+/// is not installed. Failure is reported through the app's toast rather than
+/// thrown: `launchUrl` throws (it does not return false) on a device with no
+/// handler for the scheme, and an unhandled exception here would surface as a
+/// red screen over Home.
+Future<void> _openDiscord(BuildContext context) async {
+  var opened = false;
+  try {
+    opened = await launchUrl(
+      Uri.parse(AboutInfo.discordUrl),
+      mode: LaunchMode.externalApplication,
+    );
+  } catch (_) {
+    opened = false;
+  }
+  if (!opened && context.mounted) {
+    showSmToast(context, "Couldn't open Discord");
+  }
+}
+
 class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -226,31 +249,69 @@ class _Header extends StatelessWidget {
           ],
         ),
         const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Sticker Maker',
-              style: TextStyle(
-                fontFamily: AppFonts.display,
-                fontWeight: FontWeight.w700,
-                fontSize: 20,
-                height: 1,
-                color: Theme.of(context).colorScheme.onSurface,
+        // Expanded, not a fixed Column followed by a Spacer: the title is set in
+        // the display face at 20px and its intrinsic width plus two 38px action
+        // buttons overflows a 412dp-wide phone. Letting the title take the slack
+        // and ellipsize keeps the header intact on narrow screens and at large
+        // system font scales.
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Sticker Maker',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: AppFonts.display,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 20,
+                  height: 1,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
-            ),
-            const SizedBox(height: 2),
-            const Text(
-              'Make it stick.',
-              style: TextStyle(
-                fontFamily: AppFonts.ui,
-                fontSize: 11,
-                color: AppColors.textMuted,
+              const SizedBox(height: 2),
+              const Text(
+                'Make it stick.',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: AppFonts.ui,
+                  fontSize: 11,
+                  color: AppColors.textMuted,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        const Spacer(),
+        const SizedBox(width: 8),
+        Semantics(
+          button: true,
+          label: 'Join the Sticker Maker Discord',
+          child: InkWell(
+            onTap: () => _openDiscord(context),
+            customBorder: const CircleBorder(),
+            child: Container(
+              width: 38,
+              height: 38,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.chipSurface,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  width: 1.5,
+                ),
+              ),
+              child: const ImageIcon(
+                AssetImage('assets/icons/discord.png'),
+                size: 18,
+                color: AppColors.violetLight,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
         Semantics(
           button: true,
           label: 'About and settings',

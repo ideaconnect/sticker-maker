@@ -72,6 +72,28 @@ void main() {
     expect(find.text('Recent stickers'), findsOneWidget);
   });
 
+  testWidgets('Home header offers the Discord link beside About', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    final semantics = tester.ensureSemantics();
+    await tester.pump();
+
+    // Announced, because it leaves the app: a screen-reader user should know
+    // this is the Discord invite and not another in-app destination.
+    expect(
+      find.bySemanticsLabel('Join the Sticker Maker Discord'),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('About and settings'), findsOneWidget);
+    semantics.dispose();
+
+    // The mark is the shipped asset, not a stand-in Material glyph.
+    final icon = tester.widget<ImageIcon>(find.byType(ImageIcon).first);
+    expect((icon.image as AssetImage).assetName, 'assets/icons/discord.png');
+  });
+
   testWidgets('New Sticker navigates to the editor', (tester) async {
     await pumpApp(tester);
 

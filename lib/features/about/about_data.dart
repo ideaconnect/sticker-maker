@@ -10,8 +10,13 @@ abstract final class AboutInfo {
   static const contactEmail = 'bartosz@idct.tech';
 
   /// Canonical hosted privacy policy. Keep identical to the URL entered in
-  /// Play Console and served from `docs/legal/privacy-policy.md`.
-  static const privacyUrl = 'https://idct.tech/sticker-maker/privacy';
+  /// Play Console and served from `docs/legal/privacy-policy.md`. The trailing
+  /// slash is canonical: the site is built with Jekyll's `permalink: pretty`,
+  /// so the slash-less form costs a redirect.
+  static const privacyUrl = 'https://idct.tech/sticker-maker/privacy/';
+
+  /// The project's Discord server, linked from the Home header.
+  static const discordUrl = 'https://discord.gg/uYsuaa8HNm';
 
   /// The plain‑language privacy promises shown on the in‑app privacy screen.
   static const privacyHighlights = <String>[
