@@ -23,6 +23,7 @@ Out:  docs/release/store-assets/feature-graphic.png
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from pathlib import Path
 
@@ -30,7 +31,26 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 REPO = Path(__file__).resolve().parent.parent
-STICKER = REPO / "assets/branding/shots/photo_2026-07-20_19-41-41.jpg"
+SHOTS = REPO / "assets/branding/shots"
+STICKER = SHOTS / "photo_2026-07-20_19-41-41.jpg"
+
+# Back-to-front. Chosen for silhouette and colour rather than legibility: at this
+# size the UI text is decorative, so the stack has to read as "an app" from the
+# shapes alone. Cut out is the headline feature and sits in front.
+PHONES = [
+    ("photo_2026-07-20_19-41-44.jpg", -13.0),  # Text: font chips + colour swatches
+    ("photo_2026-07-20_19-41-38.jpg", -4.0),   # Frames: the finished WOOF! sticker
+    ("photo_2026-07-20_19-41-51.jpg", 6.0),    # Cut out: AI background removal
+]
+
+# Cropped off every screenshot: the status bar carries a clock and a battery
+# level, which date the asset and add noise at this scale.
+CROP_TOP_FRAC = 0.042
+CROP_BOTTOM_FRAC = 0.018
+
+SHOW_LOOSE_STICKER = False  # the phones already show the cut-out three times
+SHADOW_PAD = 34  # room around each slab for its blurred drop shadow
+STACK_MARGIN = 14  # clear space above and below the tallest rotated slab
 ICON = REPO / "assets/branding/icon.png"
 FONT_DISPLAY = REPO / "assets/fonts/Fredoka-Variable.ttf"
 FONT_BANGERS = REPO / "assets/fonts/Bangers-Regular.ttf"
@@ -51,6 +71,21 @@ MUTED = (170, 162, 186)
 # darkest fur (which reads up to ~32) on the subject side of the line.
 KEY_TOL = 18
 OUTLINE_PX = 9  # the app's die-cut outline, scaled for this canvas
+
+
+
+def fitted_phone_height(aspect: float) -> int:
+    """Largest phone height whose rotated slab still fits the canvas.
+
+    Rotating a w x h slab by t makes it h*cos(t) + w*sin(t) tall. Picking the
+    height by eye instead meant the steepest phone overflowed 500px and was
+    clipped at both ends, which reads as a mistake rather than a bleed.
+    """
+    steepest = max(abs(a) for _, a in PHONES)
+    t = math.radians(steepest)
+    growth = math.cos(t) + aspect * math.sin(t)
+    usable = H - 2 * STACK_MARGIN - 2 * SHADOW_PAD
+    return int(usable / growth)
 
 
 def recover_alpha(img: Image.Image, tol: int = KEY_TOL) -> Image.Image:
@@ -136,6 +171,39 @@ def die_cut(sticker: Image.Image, width: int = OUTLINE_PX) -> Image.Image:
     return out
 
 
+def phone(path: Path, height: int, angle: float) -> Image.Image:
+    """One screenshot as a rounded, bordered, angled slab with a drop shadow."""
+    im = Image.open(path).convert("RGB")
+    top = round(im.height * CROP_TOP_FRAC)
+    bottom = im.height - round(im.height * CROP_BOTTOM_FRAC)
+    im = im.crop((0, top, im.width, bottom))
+
+    scale = height / im.height
+    im = im.resize((max(1, round(im.width * scale)), height), Image.LANCZOS)
+
+    radius = max(10, round(height * 0.055))
+    mask = Image.new("L", im.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, im.width - 1, im.height - 1],
+                                           radius=radius, fill=255)
+    slab = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    slab.paste(im, (0, 0), mask)
+
+    # A hairline edge stops dark screenshots dissolving into the dark backdrop.
+    ImageDraw.Draw(slab).rounded_rectangle(
+        [0, 0, im.width - 1, im.height - 1], radius=radius,
+        outline=(255, 255, 255, 64), width=2,
+    )
+
+    pad = SHADOW_PAD
+    canvas = Image.new("RGBA", (im.width + pad * 2, im.height + pad * 2), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    shadow.paste((0, 0, 0, 165), (pad, pad + 12), slab.getchannel("A"))
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(18)))
+    canvas.alpha_composite(slab, (pad, pad))
+    # BICUBIC keeps the rounded corners clean; NEAREST would stairstep them.
+    return canvas.rotate(angle, resample=Image.BICUBIC, expand=True)
+
+
 def gradient_backdrop() -> Image.Image:
     """Flat brand base with the hero gradient washed across it."""
     base = Image.new("RGB", (W, H), BG)
@@ -185,40 +253,35 @@ def main() -> None:
     bbox = rgba.getchannel("A").getbbox()
     sticker = die_cut(rgba.crop(bbox))
 
-    # Fit inside a box rather than scaling by height alone. The source sticker
-    # carries the caption and the bubble out to its own edges, so a
-    # height-driven scale pushes the die-cut outline off the canvas and the
-    # graphic ends up with a white line down its right edge.
-    box_x0, box_y0, box_x1, box_y1 = 516, 34, W - 30, H - 30
-    box_w, box_h = box_x1 - box_x0, box_y1 - box_y0
-    scale = min(box_w / sticker.width, box_h / sticker.height)
-    sticker = sticker.resize(
-        (max(1, round(sticker.width * scale)), max(1, round(sticker.height * scale))),
-        Image.LANCZOS,
-    )
-    sx = box_x0 + (box_w - sticker.width) // 2
-    sy = box_y0 + (box_h - sticker.height) // 2
+    # --- angled screenshot stack, right ------------------------------------
+    # Phones are laid back to front and overlapped, so the stack reads as depth
+    # rather than three separate images.
+    probe = Image.open(SHOTS / PHONES[0][0])
+    aspect = probe.width / (probe.height * (1 - CROP_TOP_FRAC - CROP_BOTTOM_FRAC))
+    phone_h = fitted_phone_height(aspect)
+    centres = (648, 786, 924)
+    for (name, angle), cx in zip(PHONES, centres):
+        slab = phone(SHOTS / name, phone_h, angle)
+        canvas.alpha_composite(slab, (cx - slab.width // 2, (H - slab.height) // 2))
 
-    # A faint checkerboard disc behind the sticker reads as "transparent PNG".
-    # Kept low-contrast and fully inside the sticker's footprint, so it never
-    # looks like a stray grey smudge on the gradient.
-    disc = round(min(sticker.width, sticker.height) * 0.92)
-    patch = checker(disc, cell=max(10, disc // 22))
-    ring = Image.new("L", (disc, disc), 0)
-    ImageDraw.Draw(ring).ellipse([0, 0, disc - 1, disc - 1], fill=90)
-    patch.putalpha(
-        Image.composite(patch.getchannel("A"), Image.new("L", (disc, disc), 0), ring)
-        .filter(ImageFilter.GaussianBlur(6))
-    )
-    canvas.alpha_composite(
-        patch,
-        (sx + (sticker.width - disc) // 2, sy + (sticker.height - disc) // 2),
-    )
+    # A loose cut-out was tried here as a fourth dog. It collided with the promo
+    # copy and duplicated what the phones already show, so it is off by default.
+    if SHOW_LOOSE_STICKER:
+        target_h = 156
+        scale = target_h / sticker.height
+        sticker = sticker.resize(
+            (max(1, round(sticker.width * scale)), target_h), Image.LANCZOS
+        )
+        sx, sy = 424, H - sticker.height - 30
+        shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        shadow.paste((0, 0, 0, 150), (sx, sy + 8), sticker.getchannel("A"))
+        canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(14)))
+        canvas.alpha_composite(sticker, (sx, sy))
 
-    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    shadow.paste((0, 0, 0, 130), (sx, sy + 10), sticker.getchannel("A"))
-    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(16)))
-    canvas.alpha_composite(sticker, (sx, sy))
+        shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        shadow.paste((0, 0, 0, 130), (sx, sy + 10), sticker.getchannel("A"))
+        canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(16)))
+        canvas.alpha_composite(sticker, (sx, sy))
 
     # --- wordmark, left ------------------------------------------------------
     d = ImageDraw.Draw(canvas)
