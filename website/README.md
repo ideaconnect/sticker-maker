@@ -16,14 +16,19 @@ configuration, and every asset it loads comes from this folder.
 
 ## Before going live
 
-Everything below ships as a **placeholder**. Each one is a one-line change, and
-none of them break the build - they just quietly do nothing, which is exactly
-why they are easy to forget.
+Items 3 to 6 still ship as **placeholders**. Each is a one-line change, and none
+of them break the build - they just quietly do nothing, which is exactly why they
+are easy to forget.
+
+Items 1 and 2 are **done**. Both are now live, so the contact form renders and
+analytics loads after consent. If either is ever cleared again, the guards below
+put the site back into its safe state automatically, and the privacy page swaps
+to the matching wording on its own - see "Two claims-related rules" further down.
 
 | # | What | Where | Until then |
 |---|------|-------|------------|
-| 1 | **Web3Forms access key** - `web3forms_key` | `_config.yml` | The contact form is *not rendered at all*. `contact.md` detects the `REPLACE-ME-…` value and shows a "email me directly" panel instead, because a form with a placeholder key POSTs happily and silently drops the message. |
-| 2 | **Google Analytics ID** - `ga_id` | `_config.yml` | Empty ⇒ `_includes/analytics.html` emits **nothing**: no gtag, no consent-conditional loader, no requests to Google. Setting it also requires `JEKYLL_ENV=production` (the deploy workflow sets it). |
+| 1 | ✅ **Web3Forms access key** - `web3forms_key` | `_config.yml` | **Set.** The contact form renders and posts to Web3Forms with hCaptcha. While the value looked like a placeholder, `contact.md` showed an "email me directly" panel instead, because a form with a placeholder key POSTs happily and silently drops the message. That guard is still in place. |
+| 2 | ✅ **Google Analytics ID** - `ga_id` | `_config.yml` | **Set** (`G-14LYCBCVLS`). GA4 loads only after the visitor presses Accept; Reject or no choice means nothing is requested from Google. Emission is still double-gated on `JEKYLL_ENV=production` **and** a non-empty `ga_id`, so local `jekyll serve` never loads analytics. |
 | 3 | **Play Store URL** - `playstore` | `_config.yml` | The current value is *constructed* from the applicationId (`tech.idct.stickermaker`), not confirmed against a live listing. Confirm the real URL from the Play Console once the listing is published. Every Play link on the site goes through this key. |
 | 4 | **App Store badge** | `_config.yml` (`appstore_status`) + `_layouts/default.html` | iOS has not shipped. The badge renders as a non-interactive `<span class="store-badge soon">`, never a link to an invented URL. When iOS ships, add an `appstore:` URL and flip `appstore_status`. |
 | 5 | **Real screenshots** | `assets/img/` + the `hero_art` front matter | There are no app screenshots in the repo, so all product imagery is a hand-built HTML/CSS recreation of the app's screens (`.phone`, `.checker`, `.sticker`, `.toolbar`) using the real design tokens. When real captures exist, pages can switch from `hero_art:` to `hero_image:` - `_layouts/page.html` supports both. |
