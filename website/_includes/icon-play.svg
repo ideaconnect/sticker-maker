@@ -1,0 +1,10 @@
+{%- comment -%}
+  Plain "play" triangle mark, drawn as two lobes split by a horizontal seam.
+  Generic geometry in currentColor - deliberately NOT the official multi-colour
+  Google Play logo or the "Get it on Google Play" badge lockup, both of which
+  have strict brand rules.
+{%- endcomment -%}
+<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+  <path d="M4 2.6c0-.9.95-1.45 1.7-.98L19.9 10.4c.5.31.75.76.77 1.2H4V2.6z"/>
+  <path d="M4 12.4h16.67c-.02.44-.27.89-.77 1.2L5.7 22.38c-.75.47-1.7-.08-1.7-.98V12.4z"/>
+</svg>

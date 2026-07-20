@@ -1,0 +1,83 @@
+name: Pages
+
+# Build and deploy the Sticker Maker marketing site to GitHub Pages as a PROJECT
+# page under the ideaconnect org's apex custom domain, served at
+# https://idct.tech/sticker-maker/. The whole Pages deployment is the Jekyll site
+# in website/ — there are no docs to publish alongside it, and this app has no
+# public source repository. A repo has a single Pages site, so this is the only
+# workflow that owns it.
+#
+# One-time setup: Settings → Pages → Source: GitHub Actions, and LEAVE the
+# custom-domain field BLANK. The project inherits the org's apex domain
+# (idct.tech, configured on the ideaconnect.github.io page repo) and serves at
+# the /sticker-maker/ path; this repo carries no CNAME (a project CNAME would
+# claim the domain root and conflict with the org page).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - website/**
+      - .github/workflows/pages.yml
+  pull_request:
+    paths:
+      - website/**
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; don't cancel an in-progress publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: website
+      - name: Build website (Jekyll)
+        working-directory: website
+        # JEKYLL_ENV=production gates the Google Analytics include (_includes/
+        # analytics.html) so gtag is emitted only on the deployed site, never in
+        # local development builds. That include is gated on a non-empty
+        # site.ga_id as well, so today it emits nothing either way.
+        # --baseurl must match _config.yml's baseurl (/sticker-maker).
+        env:
+          JEKYLL_ENV: production
+        run: bundle exec jekyll build --baseurl "/sticker-maker" --destination "$GITHUB_WORKSPACE/_site"
+
+      # A project page under the org's apex domain must NOT ship a CNAME — one
+      # would claim idct.tech at its root and conflict with the org page. Assert
+      # the build produced none (a stray website/CNAME would reintroduce a
+      # subdomain deploy).
+      - name: Verify no project CNAME
+        run: test ! -f _site/CNAME
+
+      # PRs build (so a broken site fails review) but never publish.
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

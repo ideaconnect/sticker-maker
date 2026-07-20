@@ -1,0 +1,40 @@
+---
+layout: default
+---
+{%- comment -%}
+  Sub-page shell: an optional eyebrow / title / lead hero, then the page body in
+  a .prose column. There are no real app screenshots in this repo, so `hero_art`
+  lets a page inject a hand-built HTML/CSS product mock (a .phone frame, a
+  .sticker, a .toolbar) instead of an <img>; pages with neither get .no-art and
+  a single full-width column.
+{%- endcomment -%}
+<section class="page-hero pb-0">
+  <div class="wrap">
+    <div class="page-hero-grid{% unless page.hero_image or page.hero_art %} no-art{% endunless %}">
+      <div class="page-hero-copy">
+        {% if page.eyebrow %}<p class="eyebrow">{{ page.eyebrow }}</p>{% endif %}
+        <h1 class="page-title">{{ page.title }}</h1>
+        {% if page.lead %}<p class="page-lead">{{ page.lead }}</p>{% endif %}
+      </div>
+      {% if page.hero_image %}
+      <div class="page-hero-art">
+        <span class="glow" aria-hidden="true"></span>
+        <picture>
+          <source srcset="{{ page.hero_image | replace: '.png', '.webp' | relative_url }}" type="image/webp">
+          <img src="{{ page.hero_image | relative_url }}" alt="{{ page.hero_alt | default: page.title }}" width="{{ page.hero_w | default: 1600 }}" height="{{ page.hero_h | default: 1116 }}" fetchpriority="high" decoding="async">
+        </picture>
+      </div>
+      {% elsif page.hero_art %}
+      <div class="page-hero-art">
+        <span class="glow" aria-hidden="true"></span>
+        {{ page.hero_art }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+<section>
+  <div class="wrap prose">
+    {{ content }}
+  </div>
+</section>
