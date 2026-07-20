@@ -71,13 +71,67 @@ outlines, captions, comic bubbles, emoji, animated GIFs, and sharing to WhatsApp
 | Asset | Spec | Source | Status |
 |-------|------|--------|--------|
 | App icon | 512×512 PNG, 32-bit | `assets/branding/icon.png` (already in repo) | ✅ have source |
-| Adaptive icon | fg + `#131019` bg | `assets/branding/icon_foreground.png` | ✅ wired in pubspec |
+| Adaptive icon | image fg + image bg (no flat colour) | `assets/branding/icon_foreground.png` + `assets/branding/adaptive_background.png` | ✅ wired in pubspec |
+| Themed icon (Android 13+) | monochrome layer | `assets/branding/icon_monochrome.png` | ✅ wired in pubspec |
+| Splash | full-screen + Android 12+ masked variant | `assets/branding/splash.png` + `assets/branding/splash_android12.png` on `#131019` | ✅ wired in pubspec |
 | Feature graphic | 1024×500 PNG/JPG | **to design** — logo + tagline "Make it stick." on the dark gradient | ⬜ human |
 | Phone screenshots | ≥ 2 required, up to 8; 1080×1920 (9:16) | capture from the app (plan below) | ⬜ human |
+
+The adaptive background is an *image* layer, not the flat `#131019` it used to
+be — the artwork's gradient runs edge to edge so every launcher mask shape sees
+gradient and never a dark frame. `android/app/src/main/res/values/colors.xml`
+was deleted with that change; nothing references a launcher background colour
+any more. The launcher / recents / Settings label comes from
+`android/app/src/main/res/values/strings.xml` (`@string/app_name` =
+"Sticker Maker"), deliberately left untranslated as a proper noun — `app_pl.arb`
+keeps `appTitle` identical.
 
 **Feature graphic direction:** dark background (`#0C0A11`), the app's violet→pink
 hero gradient, the logo mark, tagline "Make it stick.", and one hero sticker
 (pet cut-out with a white die-cut outline).
+
+> ⚠️ **Open art-direction question (maintainer decides).** This direction still
+> describes the violet→pink hero gradient, which is the in-app theme
+> (`#7C5CFF → #B06BFF → #F472B6`, `AppColors.heroGradient`, still current). The
+> app icon shipped in `assets/branding/` is a different palette — a conic
+> gradient sweeping blue → cyan → amber/orange → magenta. A feature graphic sits
+> next to the icon in the Play listing, so the two get compared directly. Decide
+> deliberately whether the feature graphic follows the icon's palette, keeps the
+> app's violet→pink, or bridges them; this paragraph is left as written rather
+> than silently rewritten.
+
+### Regenerating the branding assets
+
+Every `assets/branding/*.png` is **generated** — never hand-edit them. The single
+source of truth is `design/branding/app-icon-master.png` (874×874 RGBA, not
+bundled). Full order:
+
+```bash
+python tools/build_branding.py          # master  -> assets/branding/*.png (Pillow + numpy only)
+dart run flutter_launcher_icons         # -> res/mipmap-*/, res/drawable-*/ic_launcher_*
+dart run flutter_native_splash:create   # -> res/drawable*/splash*, values*/styles.xml
+python tools/optimize_res.py            # lossless re-encode of the generated res/ PNGs
+```
+
+The last step must follow the two Dart generators every time (they re-emit
+unoptimised RGBA PNGs); it is lossless and idempotent, and `--check` fails if it
+was skipped — CI enforces that check on every PR, so a regeneration that stops
+after the Dart generators will not merge. The authoritative order is documented in `tools/build_branding.py`'s
+module docstring, which also documents the layer geometry (dp-based constants on
+the 108dp adaptive canvas); the per-generator config lives in the
+`flutter_launcher_icons:` / `flutter_native_splash:` blocks at the bottom of
+`pubspec.yaml`. Only `assets/branding/logo.png` is bundled into the Flutter asset
+bundle (used by `lib/core/widgets/app_logo.dart`); the rest are build-time
+inputs that the two generators bake into `android/app/src/main/res/`.
+
+The Play Console 512×512 listing icon is `assets/branding/icon.png` — upload it
+directly, it is generated at exactly that size and as a 32-bit PNG (RGBA, alpha
+255 everywhere), which is the format Google's listing-asset spec states for the
+512×512 icon. (Whether the uploader actually *rejects* a 24-bit RGB file has not
+been verified here — the file is emitted as 32-bit so the question never comes
+up.) Note that `icon.png` is the listing asset only: `flutter_launcher_icons`
+consumes its RGB twin `assets/branding/icon_launcher.png`, for the reason
+documented at that `image_path` in `pubspec.yaml`.
 
 ## Screenshot capture plan (≥ 6, in this order)
 

@@ -8,6 +8,18 @@
 Deterministic and re-runnable: the only randomness is a fixed-seed dither.
 Requires Pillow + numpy only (no ImageMagick, no network).
 
+This is step 1 of 3. A full branding regeneration is, IN ORDER:
+
+    1. python tools/build_branding.py            # master -> assets/branding/
+    2. dart run flutter_launcher_icons           # -> android/.../res/
+       dart run flutter_native_splash:create     # -> android/.../res/
+    3. python tools/optimize_res.py              # losslessly re-encode res/
+
+Step 3 must follow step 2 every time: both Dart generators call the `image`
+package's bare `encodePng`, so they always re-emit fat RGBA and always
+re-create the byte-identical drawable-night-*/android12splash.png duplicates.
+Step 3 is lossless and idempotent (`--check` fails if it was skipped).
+
 Treatment — "full-bleed gradient background + isolated character foreground":
 the master artwork is a rounded tile (conic gradient) with a character drawn on
 it. Android's adaptive icon wants those as two separate layers, so the script
@@ -32,8 +44,12 @@ Pipeline
                                synthesised drop shadow faded out before 72dp
       icon_monochrome.png      1024 px, white silhouette with the interior line
                                art knocked out (Android 13+ themed icons)
-      icon.png                 512 px legacy / Play square: the same two layers
-                               composited, character at the master's own scale
+      icon.png                 512 px Play Console listing square: the same two
+                               layers composited, character at the master's own
+                               scale; RGBA with alpha 255 everywhere, because
+                               Play's listing-asset spec calls for a 32-bit PNG
+      icon_launcher.png        the same 512 px pixels as RGB -- this is what
+                               flutter_launcher_icons consumes (see below)
       splash.png 512 / splash_android12.png 1152 / logo.png 192
 """
 
@@ -488,8 +504,26 @@ def main():
     can = lrgb * la[..., None] + base * (1 - la[..., None])
     # 512 px is the Play Console listing size and 2.6x the largest legacy
     # mipmap (192), so nothing downstream wants more than that.
-    Image.fromarray(dither_to_u8(resize_f(can, (LEGACY, LEGACY))),
-                    "RGB").save(P("icon.png"), optimize=True)
+    legacy = dither_to_u8(resize_f(can, (LEGACY, LEGACY)))
+    # Two files, identical pixels, different channel layout — deliberately, and
+    # they must not be collapsed back into one:
+    #
+    #   icon.png          RGBA, alpha 255 everywhere. The Play Console listing
+    #                     asset; Google's listing-asset spec calls for a 32-bit
+    #                     PNG. Build-time/manual-upload only, never bundled.
+    #   icon_launcher.png RGB. `pubspec.yaml` points flutter_launcher_icons at
+    #                     THIS one. The generator resizes whatever it is given
+    #                     with package:image's box-average filter, and at the
+    #                     hdpi 512->72 step that filter computes
+    #                     255*49*(1/49) = 254.99999999999997 and PixelUint8
+    #                     truncates it to 254 — so an RGBA source yields a
+    #                     *near*-opaque mipmap that tools/optimize_res.py
+    #                     cannot losslessly strip back to RGB, shipping ~1.1 kB
+    #                     of alpha plane that is visually nil. Feeding it RGB
+    #                     sidesteps the whole thing: no alpha channel exists to
+    #                     be rounded.
+    save_rgba(legacy, np.full((LEGACY, LEGACY), 255, np.uint8), P("icon.png"))
+    Image.fromarray(legacy, "RGB").save(P("icon_launcher.png"), optimize=True)
 
     # -- 8. splash artwork (transparent, master tile) ------------------------
     def tile_on_canvas(canvas, tile_w):
@@ -514,11 +548,14 @@ def main():
                   np.rint(ca).astype(np.uint8), P(name))
 
     save_tile(512, 500, "splash.png")
-    # The Android 12+ splash icon is a 1152 px canvas whose visible area is only
-    # the centre 768 px circle, so the tile has to be much smaller relative to
-    # it than in the legacy splash: at 610 px its farthest painted point sits at
-    # r = 377, seven pixels inside the 384 px mask.
-    save_tile(1152, 610, "splash_android12.png")
+    # The Android 12+ splash icon is a 1152 px canvas (288dp at xxxhdpi) whose
+    # safe area is only the centre 768 px circle (192dp), so the tile has to be
+    # much smaller relative to it than in the legacy splash. The tile is a pure
+    # centred scale, so max painted radius is linear in tile_w: r = 0.6015 *
+    # tile_w. 610 px put r at 367 -- 95 % of the 384 px safe radius, i.e. no
+    # margin at all for OEM splash masks. 544 px (a whole 136dp) puts r at 327,
+    # 85 % of the safe radius, leaving ~14dp of headroom at every alpha level.
+    save_tile(1152, 544, "splash_android12.png")
     # 192 px covers up to 64 dp at 3x density, which is all the in-app mark
     # needs; anything bigger should render the icon layers instead.
     save_tile(192, 190, "logo.png")

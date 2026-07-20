@@ -10,6 +10,7 @@ on:
 env:
   FLUTTER_VERSION: "3.44.6"
   JAVA_VERSION: "17"
+  PYTHON_VERSION: "3.12"
 
 jobs:
   analyze-test-build:
@@ -18,6 +19,70 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # The branding guard runs first: it needs neither Java, Flutter nor
+      # `pub get`, and a skipped step 3 is the one failure here that is silent
+      # (1 MB of duplicate PNGs ships and nothing else notices), so it fails
+      # fast at ~40s instead of after the ~3min analyze/test legs.
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+
+      - name: Install branding tooling
+        # Pinned, not latest: `--check` fails when a re-encode comes out smaller
+        # than the committed bytes, and those bytes were produced by the pinned
+        # Pillow. A newer PNG encoder shaving one byte would turn this guard red
+        # on a correctly optimized tree. `--only-binary` keeps a momentarily
+        # missing wheel from becoming a silent multi-minute numpy source build.
+        # (quoted: the bare scalar contains ": ", which YAML would read as a map)
+        run: "python -m pip install --disable-pip-version-check --only-binary=:all: -r tools/requirements.txt"
+
+      - name: Verify generated res/ is optimized (branding step 3)
+        # `shell: bash` is load-bearing: it brings `pipefail`, without which the
+        # `| tee` below would mask python's exit code and the guard would always
+        # pass. The explicit `if` is needed because `-e` would abort the step
+        # before the annotation/summary are written.
+        shell: bash
+        run: |
+          # --strict: a SKIP line means the tool did not recognise one of the
+          # six generated PNGs' channel layout. That is an unhandled state, not
+          # a pass, and without --strict it exits 0 and ships silently.
+          if python tools/optimize_res.py --check --strict | tee /tmp/optimize_res.log; then
+            exit 0
+          fi
+          {
+            echo '### Branding step 3 (`tools/optimize_res.py`) was skipped'
+            echo
+            echo 'The PNGs under `android/app/src/main/res` are the raw output of'
+            echo '`flutter_launcher_icons` / `flutter_native_splash`. Fix with one command'
+            echo 'at the repo root, then commit the result:'
+            echo
+            echo '```'
+            echo 'python tools/optimize_res.py'
+            echo '```'
+            echo
+            echo '<details><summary>What the check found</summary>'
+            echo
+            echo '```'
+            cat /tmp/optimize_res.log
+            echo '```'
+            echo
+            echo '</details>'
+            echo
+            echo 'Pipeline order: `docs/DEVELOPMENT.md` -> "Branding assets". The pass is'
+            echo 'lossless and idempotent -- re-running it on an already-optimized tree is a no-op.'
+            echo
+            echo 'If the report above is `SKIP` lines rather than `would dedupe` / `would encode`,'
+            echo 're-running will NOT help: the tool did not recognise a generated PNG'"'"'s channel'
+            echo 'layout, so an input to `flutter_launcher_icons` / `flutter_native_splash` changed.'
+            echo 'Check `pubspec.yaml`'"'"'s `image_path` (it must stay the RGB `icon_launcher.png`)'
+            echo 'and the recipe table in `tools/optimize_res.py`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=Branding step 3 was skipped::android/app/src/main/res holds unoptimized / duplicated PNGs. Run 'python tools/optimize_res.py' at the repo root and commit the result. See the job summary for the per-file report."
+          exit 1
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4

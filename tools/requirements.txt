@@ -1,0 +1,19 @@
+# Python deps for the branding tooling (tools/build_branding.py,
+# tools/optimize_res.py). Python 3.12 -- see docs/DEVELOPMENT.md.
+#
+#     python -m pip install --only-binary=:all: -r tools/requirements.txt
+#
+# Pinned exactly, not floated. `optimize_res.py --check` compares a fresh
+# re-encode against the committed bytes, and those bytes were produced by these
+# versions: a different PNG encoder that shaves even one byte would turn the CI
+# guard red on a correctly optimized tree. (Measured: Pillow 10.4.0 links plain
+# zlib and reports 75 B of phantom savings on this tree; Pillow 11.3.0 and
+# 12.3.0 both bundle zlib-ng 1.3.1 and produce byte-identical output.) The
+# re-encode branch of --check carries a small tolerance for residual drift, but
+# the pin is what keeps that tolerance from being load-bearing.
+#
+# numpy is pinned for the same reason plus reproducibility of the fixed-seed
+# dither in build_branding.py. Both have cp312 manylinux wheels, so
+# `--only-binary=:all:` never falls back to a multi-minute source build.
+Pillow==12.3.0
+numpy==1.26.4
