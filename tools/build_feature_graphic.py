@@ -204,11 +204,16 @@ def phone(path: Path, height: int, angle: float) -> Image.Image:
     return canvas.rotate(angle, resample=Image.BICUBIC, expand=True)
 
 
-def gradient_backdrop() -> Image.Image:
-    """Flat brand base with the hero gradient washed across it."""
-    base = Image.new("RGB", (W, H), BG)
+def gradient_backdrop(width: int = W, height: int = H) -> Image.Image:
+    """Flat brand base with the hero gradient washed across it.
+
+    Parameterised so the 1080x1920 padding pass can reuse the exact same
+    backdrop; two hand-tuned copies of a gradient drift apart immediately.
+    """
+    w, h = width, height
+    base = Image.new("RGB", (w, h), BG)
     px = np.asarray(base).astype(np.float64)
-    ys, xs = np.mgrid[0:H, 0:W]
+    ys, xs = np.mgrid[0:h, 0:w]
 
     def wash(cx, cy, radius, colour, strength):
         d = np.sqrt(((xs - cx) / radius) ** 2 + ((ys - cy) / radius) ** 2)
@@ -216,9 +221,9 @@ def gradient_backdrop() -> Image.Image:
         for c in range(3):
             px[:, :, c] += (colour[c] - px[:, :, c]) * k
 
-    wash(W * 0.10, H * 1.05, W * 0.62, VIOLET_DEEP, 0.60)
-    wash(W * 0.46, H * -0.10, W * 0.55, VIOLET_MID, 0.34)
-    wash(W * 0.92, H * 0.80, W * 0.52, PINK, 0.42)
+    wash(w * 0.10, h * 1.05, w * 0.62, VIOLET_DEEP, 0.60)
+    wash(w * 0.46, h * -0.10, w * 0.55, VIOLET_MID, 0.34)
+    wash(w * 0.92, h * 0.80, w * 0.52, PINK, 0.42)
     return Image.fromarray(np.clip(px, 0, 255).astype(np.uint8), "RGB")
 
 
