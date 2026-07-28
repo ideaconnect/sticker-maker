@@ -11,10 +11,10 @@ tagline: "Make it stick."
 # Derived from the approved Play short description in
 # docs/release/store-listing.md ("Turn photos into stickers - auto cut-out,
 # text & GIFs. For WhatsApp & Telegram."). Keep every claim inside that
-# document: one-time purchase, no ads/subscriptions/watermarks, on-device.
+# document: free, no ads/subscriptions/watermarks, on-device.
 description: >-
   Turn photos into stickers - auto cut-out, text and GIFs. For WhatsApp and
-  Telegram. Everything runs on your device. Paid once, no ads or subscriptions.
+  Telegram. Everything runs on your device. Free, with no ads or subscriptions.
 author: Bartosz Pachołek
 # Copyright line + author/company link rendered in the footer.
 copyright: "IDCT · Bartosz Pachołek"
@@ -79,7 +79,8 @@ exclude:
 # Nav order is defined here and rendered by _layouts/default.html.
 # Split: the header renders this whole list (it is short enough that hiding the
 # legal pages behind a footer-only link would just make them harder to find, and
-# a paid app benefits from Privacy/Terms being one click away everywhere). The
+# an app making privacy claims benefits from Privacy/Terms being one click
+# away everywhere). The
 # footer repeats the same four plus the "Cookie preferences" re-opener, which is
 # the conventional home for legal links.
 nav:

@@ -248,7 +248,7 @@ For anyone deciding whether it'll run on their phone.
   {% endif %}
 </div>
 
-<p class="muted" style="margin-top:14px">One purchase, every feature. No ads, no subscriptions, no in-app purchases, no watermarks.</p>
+<p class="muted" style="margin-top:14px">Free, every feature. No ads, no subscriptions, no in-app purchases, no watermarks.</p>
 
 <div class="cta-row">
   <a class="btn btn-primary" href="{{ site.playstore }}" rel="noopener">Get it on Google Play</a>
