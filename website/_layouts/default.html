@@ -39,11 +39,13 @@
   <meta name="twitter:image:alt" content="{{ social_alt }}">
 
   {%- comment -%}
-    Structured data for a PAID, closed-source mobile app. Deliberately absent:
-    codeRepository and license (there is no public source), and any `price` -
-    the one-time price isn't decided, and inventing one here would be a false
-    claim in a machine-readable format. The Offer therefore carries only the
-    store URL; isAccessibleForFree:false is what marks it as not-free.
+    Structured data for a FREE, closed-source mobile app. Deliberately absent:
+    codeRepository and license, because there is no public source.
+
+    The app is free with no in-app purchases, so the Offer states price 0
+    explicitly rather than omitting it: an Offer with no price is ambiguous to a
+    consumer, whereas "0" is unambiguous and is the claim the whole site makes.
+    priceCurrency is required alongside price even when the price is zero.
     operatingSystem is Android only - iOS is a later milestone.
   {%- endcomment -%}
   <script type="application/ld+json">
@@ -56,12 +58,14 @@
     "operatingSystem": "Android",
     "url": "{{ '/' | absolute_url }}",
     "image": "{{ social_image }}",
-    "isAccessibleForFree": false,
-    "featureList": "One-tap background removal that runs entirely on the device; adjustable white die-cut sticker outline; bold captions and comic speech bubbles in playful fonts; emoji and props on the canvas; animated stickers exported as looping GIFs; brightness, contrast, saturation, hue and opacity adjustments; share to WhatsApp and Telegram or save a transparent PNG or GIF; build and organise sticker packs with per-sticker emoji tags; no ads, no subscriptions, no watermarks",
+    "isAccessibleForFree": true,
+    "featureList": "One-tap background removal that runs entirely on the device; adjustable white die-cut sticker outline; bold captions and comic speech bubbles in playful fonts; emoji and props on the canvas; animated stickers exported as looping GIFs; brightness, contrast, saturation, hue and opacity adjustments; share to WhatsApp and Telegram or save a transparent PNG or GIF; build and organise sticker packs with per-sticker emoji tags; free with no ads, no subscriptions, no in-app purchases and no watermarks",
     "offers": {
       "@type": "Offer",
       "url": "{{ site.playstore }}",
-      "category": "Paid",
+      "price": "0",
+      "priceCurrency": "PLN",
+      "category": "Free",
       "availability": "https://schema.org/InStock"
     },
     "author": { "@type": "Organization", "name": "{{ site.author }}", "url": "{{ site.author_url }}" }
@@ -85,11 +89,8 @@
         {% endfor %}
       </nav>
       {%- comment -%}
-        CTA cluster. This app is closed source and sold, so there is no GitHub /
-        Discord / sponsor row here: the only call to action is the store.
-        The Play URL is a placeholder until the listing is live (see
-        _config.yml).
-
+        CTA cluster. This app is closed source, so there is no GitHub / Discord /
+        sponsor row here: the only call to action is the store.
         Deliberately ONE short button, exactly like Helena's nav: the full
         Play + "App Store - Coming soon" pair is a page-band component
         (`.store-badge`, min-width 200px each) and it cannot fit a 64px bar.
@@ -114,7 +115,7 @@
 
   <footer class="footer">
     <div class="wrap">
-      <span>© {{ 'now' | date: "%Y" }} <a href="{{ site.author_url }}">{{ site.copyright }}</a> · Sticker Maker is a paid app. No ads, no subscriptions, no watermarks.</span>
+      <span>© {{ 'now' | date: "%Y" }} <a href="{{ site.author_url }}">{{ site.copyright }}</a> · Sticker Maker is free. No ads, no subscriptions, no watermarks.</span>
       <span>
         <a href="{{ '/features/' | relative_url }}">Features</a> ·
         <a href="{{ '/privacy/' | relative_url }}">Privacy</a> ·

@@ -3,22 +3,26 @@ layout: page
 title: Terms &amp; Conditions
 eyebrow: The deal, in plain English
 lead: >-
-  Sticker Maker is a paid app you buy once from the store. This is the agreement
+  Sticker Maker is a free app you install from the store. This is the agreement
   that comes with it: what you may do with it, what we promise, and what we
   don't. Nothing here takes away the rights your consumer law already gives you.
 description: >-
-  Terms and conditions for the Sticker Maker app and website: licence, one-time
-  purchase, refunds, your content, liability and governing law.
+  Terms and conditions for the Sticker Maker app and website: licence, price,
+  your content, liability and governing law.
 ---
 {%- comment -%}
   MAINTAINER NOTE - not rendered, and deliberately not shown to visitors.
 
   These terms were drafted in good faith to match how the product actually works
-  (paid one-time app, sold through Google Play, no data collection, Polish sole
+  (free app, distributed through Google Play, no data collection, Polish sole
   trader, EU consumer law). They are a solid starting point, not legal advice.
-  Have a lawyer review them before commercial launch, in particular the
-  refunds/withdrawal wording (s.4), the liability carve-outs (s.9), and the
-  dispute-resolution routes (s.10), which is where a mistake costs money.
+  Have a lawyer review them before you rely on them, in particular the
+  liability carve-outs (s.9) and the dispute-resolution routes (s.10), which is
+  where a mistake costs money.
+
+  The app was briefly listed at a price before release and is now free. s.3 and
+  s.4 are written for a free app but keep a carve-out for anyone who did pay in
+  that window; delete it only once you are certain nobody was ever charged.
 
   Two factual points to re-check at launch:
   - s.8 states Android 8.0 (API 26), matching android/app/build.gradle.kts minSdk = 26.
@@ -33,8 +37,8 @@ description: >-
   <ol>
     <li><a href="#who-we-are">Who we are, what this covers</a></li>
     <li><a href="#licence">Your licence to use the app</a></li>
-    <li><a href="#purchase">Purchase, price and payment</a></li>
-    <li><a href="#refunds">Refunds and withdrawal</a></li>
+    <li><a href="#purchase">Price and distribution</a></li>
+    <li><a href="#refunds">If something is wrong with it</a></li>
     <li><a href="#your-content">Your content</a></li>
     <li><a href="#acceptable-use">Acceptable use</a></li>
     <li><a href="#third-parties">Third-party services</a></li>
@@ -46,7 +50,7 @@ description: >-
   </ol>
 </div>
 
-> **The short version.** You buy the app once and it's yours to use on your own
+> **The short version.** The app is free and yours to use on your own
 > devices. Your photos and stickers stay on your phone and stay yours. We never
 > receive them. Don't resell the app or pull it apart, and don't make stickers that
 > hurt people. If something is broken, email us. Nothing below removes the rights
@@ -72,8 +76,7 @@ These terms cover two things:
 - **this website**: the pages at idct.tech/sticker-maker.
 
 By installing or using the app, or by using this website, you agree to these terms.
-If you don't agree, don't install it. If you already bought it, see
-[Refunds](#refunds).
+If you don't agree, don't install it, or uninstall it if you already have.
 
 How we handle data is set out separately in the
 [Privacy &amp; Cookies]({{ '/privacy/' | relative_url }}) page, which forms part of
@@ -82,14 +85,15 @@ these terms. The short of it: the app collects nothing.
 ## 2. Your licence to use the app
 {: #licence }
 
-When you buy the app through Google Play (and, later, through the App Store), we
+When you install the app from Google Play (and, later, from the App Store), we
 grant you a **personal, non-exclusive, non-transferable, worldwide licence** to
 install and use it on devices you own or control, for as long as these terms are
 observed. That includes personal use and use in your own work.
 
 The app is **licensed, not sold**. We keep all intellectual-property rights in the
 app itself: its code, its interface and design, its artwork, its icon and its name.
-Buying the app doesn't transfer any of that to you.
+Installing the app doesn't transfer any of that to you, and neither does it being
+free.
 
 You may not:
 
@@ -111,48 +115,56 @@ The app bundles open-source components, listed in the app under
 **About → Open-source licenses**. Those components come under **their own** licences,
 which prevail over this section for those components.
 
-## 3. Purchase, price and payment
+## 3. Price and distribution
 {: #purchase }
 
-Sticker Maker is a **one-time purchase**. Every feature is included. There are no
-ads, no subscriptions, no in-app purchases, no upsells, and no watermarks on what you
-export.
+Sticker Maker is **free**. Every feature is included from the first launch. There are
+no ads, no subscriptions, no in-app purchases, no paid tier, no upsells, and no
+watermarks on what you export. Nothing is held back for a later payment, and you are
+not asked to pay with your data instead: the app collects nothing, which the
+[Privacy &amp; Cookies]({{ '/privacy/' | relative_url }}) page sets out in full.
 
-The price is the one shown to you by the store at the moment of purchase, in your
-currency and including any applicable tax. We don't quote a price here, because the
-store sets and converts it per country and it can change over time.
-
-Payment is handled entirely by **the store**: Google Play today, the App Store when
-the iOS version ships. The store is the seller and merchant of record for your
-purchase: it takes the payment, issues the receipt, and handles the tax. We never see
-your card or payment details. Your purchase is therefore also subject to the store's
-own terms, for example the
+You get the app from **the store**: Google Play today, the App Store when the iOS
+version ships. The store distributes it, so your use of the store is also subject to
+its own terms, for example the
 [Google Play Terms of Service](https://play.google.com/intl/en/about/play-terms/).
+There is no payment, so there is no receipt, no merchant of record and no card
+details for anyone to handle.
 
-## 4. Refunds and your right of withdrawal
+We may charge for a future version. If that ever happens it will be stated clearly on
+the store listing before you install anything, and it will not turn a copy you
+already have into one you have to pay for.
+
+**If you paid for it.** The app was listed at a price for a short window before
+release. If you were charged in that window, you keep every right that came with that
+purchase, including the refund and conformity rights in section 4, and the app you
+have stays yours on the same terms.
+
+## 4. If something is wrong with it
 {: #refunds }
 
-**Through the store.** Because the store is the merchant of record, refunds go
-through it first. Google's rules and the request form are here:
+**There is nothing to refund.** The app is free, so no money changes hands and there
+is no purchase to reverse. If it isn't for you, uninstall it; that costs you nothing
+and we are not told about it.
+
+**Your statutory rights still exist.** Nothing in these terms limits the rights EU and
+Polish consumer law gives you, including, where they apply to digital content supplied
+free of charge, the right to have the app brought into conformity if it does not do
+what it is described as doing. We do not ask you to waive anything.
+
+**We would rather fix it.** If the app is broken, misbehaves, or does not match what
+this site says it does, [tell us]({{ '/contact/' | relative_url }}). A bug report from
+someone who hit the problem is more useful to us than a complaint we never hear, and
+fixing it is the outcome we want too.
+
+**If you were charged during the paid window.** Refunds for that purchase go through
+the store, which was the merchant of record for it:
 [Google Play refund policy](https://support.google.com/googleplay/answer/2479637).
-Google Play typically offers a short automatic refund window after purchase, and
-handles anything later case by case.
-
-**Your statutory right of withdrawal (EU/EEA consumers).** As a consumer buying at a
-distance you normally have **14 days** to withdraw from the contract without giving a
-reason. For **digital content supplied without a tangible medium** (which is what an
-app download is), that right is lost once performance has begun with your **express
-prior consent** and your acknowledgement that you thereby lose it. That is what
-happens when you download the app and start using it. If you have not started using
-it, the right still stands: contact the store, or
-[write to us]({{ '/contact/' | relative_url }}) and we'll help you sort it out.
-
-**Faulty or not as described.** Separately from withdrawal, if the app doesn't do
-what it's supposed to do, you keep your statutory rights to have it brought into
-conformity, or to a price reduction or refund, under EU and Polish consumer law
-(the Digital Content Directive as implemented in the Polish Consumer Rights Act).
-Nothing in these terms limits that. If the store won't help, email us. We would much
-rather fix the bug or refund you than argue about it.
+If the store will not help,
+[write to us]({{ '/contact/' | relative_url }}) and we will sort it out. Your
+statutory rights as a purchaser, including the right of withdrawal for digital content
+and the conformity rights under the Digital Content Directive as implemented in the
+Polish Consumer Rights Act, are unaffected by the app later becoming free.
 
 ## 5. Your content
 {: #your-content }
@@ -213,7 +225,7 @@ of any particular release date.
 
 We may add, change or remove features as the app develops, and updates are delivered
 through the store. We may also stop distributing the app, or stop supporting older
-operating-system versions. A copy you already bought stays on your device, but we
+operating-system versions. A copy you already installed stays on your device, but we
 can't guarantee it keeps working indefinitely on hardware and platforms that keep
 moving underneath it.
 
@@ -240,10 +252,12 @@ given photo will cut out well, or that any messenger will accept a particular ex
 
 Where our liability can lawfully be limited, we are liable for loss that is a
 foreseeable result of our breach of these terms, and not for loss that isn't,
-including lost profits, lost business or lost opportunity. Taken together, our total
-liability is limited to the amount you paid for the app. We're also not liable
-for lost projects or stickers you didn't back up, since they only ever existed on
-your device.
+including lost profits, lost business or lost opportunity. The app is free, so
+there is no purchase price to measure a cap against; our liability is limited to
+the fullest extent the law allows, and if you were charged during the paid window
+described in section 3, to the amount you actually paid. We're also not liable for
+lost projects or stickers you didn't back up, since they only ever existed on your
+device.
 
 If you use the app in the course of a business, the statutory consumer protections
 referred to above don't apply to you, and the limits in this section apply in full.
@@ -280,7 +294,7 @@ We may update these terms, for example when the iOS version ships or when the la
 changes. The current version always lives at this URL, with the "Last updated" date at
 the top. Continuing to use the app or the site after a change means you accept the new
 version, so far as the law allows. We won't apply a change retroactively to take away
-a right you already had in a copy you already bought.
+a right you already had in a copy you already installed.
 
 If any part of these terms turns out to be unenforceable, the rest of them still
 stand.

@@ -9,7 +9,7 @@ source.
 no webfont service. It builds on GitHub Pages' stock Jekyll with no extra
 configuration, and every asset it loads comes from this folder.
 
-> **This app is paid and closed source.** There is no public repository, no
+> **This app is free and closed source.** There is no public repository, no
 > issue tracker and no chat community, so nothing on the site links to one and
 > there is deliberately no `repo:` / `discord:` / `sponsor:` key in
 > `_config.yml`. If you are adding a page, do not introduce one.
@@ -32,12 +32,12 @@ to the matching wording on its own - see "Two claims-related rules" further down
 | 3 | **Play Store URL** - `playstore` | `_config.yml` | The current value is *constructed* from the applicationId (`tech.idct.stickermaker`), not confirmed against a live listing. Confirm the real URL from the Play Console once the listing is published. Every Play link on the site goes through this key. |
 | 4 | **App Store badge** | `_config.yml` (`appstore_status`) + `_layouts/default.html` | iOS has not shipped. The badge renders as a non-interactive `<span class="store-badge soon">`, never a link to an invented URL. When iOS ships, add an `appstore:` URL and flip `appstore_status`. |
 | 5 | **Real screenshots** | `assets/img/` + the `hero_art` front matter | There are no app screenshots in the repo, so all product imagery is a hand-built HTML/CSS recreation of the app's screens (`.phone`, `.checker`, `.sticker`, `.toolbar`) using the real design tokens. When real captures exist, pages can switch from `hero_art:` to `hero_image:` - `_layouts/page.html` supports both. |
-| 6 | **Have a lawyer read `terms.md`** | `terms.md` | ⚠️ The terms were written by the app's author, not a lawyer. **Get them reviewed before commercial launch** - this is a paid app sold to consumers, and consumer-sales law (statutory withdrawal rights, warranty, liability caps) is not something to improvise. `privacy.md` deserves the same read-through. |
+| 6 | **Have a lawyer read `terms.md`** | `terms.md` | ⚠️ The terms were written by the app's author, not a lawyer. **Get them reviewed** - the app is distributed to consumers under EU and Polish law, and the liability caps and statutory-rights carve-outs are not something to improvise. s.3 and s.4 were rewritten when the app went from paid to free and still carry a carve-out for anyone charged during the brief paid window. `privacy.md` deserves the same read-through. |
 
 Two claims-related rules for anyone editing copy:
 
-- **Never claim more than the app actually does.** No price (undecided) and no
-  shipped iOS. On packs, be precise about the asymmetry: **Add to WhatsApp**
+- **Never claim more than the app actually does.** The app is **free** with no
+  ads, subscriptions or in-app purchases, and iOS has not shipped. On packs, be precise about the asymmetry: **Add to WhatsApp**
   really does install a finished pack into WhatsApp's own sticker picker
   (`ENABLE_STICKER_PACK` + the `StickerContentProvider`, #46), while
   **Add to Telegram** is a *guided* handoff - the pack is rendered and sent into

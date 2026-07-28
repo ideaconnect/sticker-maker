@@ -57,7 +57,7 @@ Contact: **[{{ site.email }}](mailto:{{ site.email }})** or the
 **Sticker Maker does not collect, store, or transmit any personal data.** Everything
 you do in the app happens **on your device**. We have no servers that receive your
 photos or your usage, no accounts, no analytics, no advertising, and no third-party
-trackers. It is a paid app with every feature included. There is nothing to sell,
+trackers. It is free, with every feature included. There is nothing to sell,
 and no reason to collect your data.
 
 ## What the app processes, and where

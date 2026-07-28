@@ -2,14 +2,14 @@
 layout: page
 title: Contact
 eyebrow: Say hello
-lead: A bug, a feature idea, a question before you buy, or a sticker you're proud of? Send a message and it lands in my inbox.
+lead: A bug, a feature idea, a question about the app, or a sticker you're proud of? Send a message and it lands in my inbox.
 description: Get in touch about Sticker Maker - questions, bug reports, and feature ideas.
 # There are no app screenshots in this repo, so the hero art is a CSS
 # recreation of the app's "Send to" sheet, re-labelled for this page. Only
 # in-flow phone classes are used here: `.sticker` is absolutely positioned
 # inside `.page-hero-art`, so the two floating stickers sit outside the phone.
 hero_art: >-
-  <div class="phone" role="img" aria-label="A phone showing a Say hello screen listing what lands well: a bug with your phone model, a feature you wish existed, a question before you buy, or a sticker you're proud of.">
+  <div class="phone" role="img" aria-label="A phone showing a Say hello screen listing what lands well: a bug with your phone model, a feature you wish existed, a question about the app, or a sticker you're proud of.">
   <div class="phone-screen">
   <span class="phone-notch"></span>
   <div class="phone-bar">
@@ -23,7 +23,7 @@ hero_art: >-
   <p class="phone-panel-title">What lands well</p>
   <div class="target is-active"><span aria-hidden="true">🐞</span> A bug, with your phone model <span class="dotmark"></span></div>
   <div class="target"><span aria-hidden="true">💡</span> A feature you wish existed <span class="dotmark"></span></div>
-  <div class="target"><span aria-hidden="true">❓</span> A question before you buy <span class="dotmark"></span></div>
+  <div class="target"><span aria-hidden="true">❓</span> A question about the app <span class="dotmark"></span></div>
   <div class="target"><span aria-hidden="true">🐶</span> A sticker you're proud of <span class="dotmark"></span></div>
   <span class="toast">Straight to my inbox</span>
   </div>
@@ -57,7 +57,7 @@ hero_art: >-
       <li><b>Store reviews:</b> always appreciated, but a poor place for bugs. I can't ask you a follow-up question there or send you a fix, so a review that says "crashes on export" can't go anywhere. Email me and it can.</li>
     </ul>
 
-    <p class="muted">Sticker Maker is a paid app and its source is closed, so there's no public issue tracker and no chat server. Email is it, and it's read by the person who wrote the app. No ticket queue, no bot. Usually a reply within a few days.</p>
+    <p class="muted">Sticker Maker's source is closed, so there's no public issue tracker and no chat server. Email is it, and it's read by the person who wrote the app. No ticket queue, no bot. Usually a reply within a few days.</p>
 
     <h3>Reporting a bug</h3>
     <p class="muted">Three lines is plenty. What you were doing, what you expected, and what happened instead. If you can, add your phone model and Android version. Cut-out quality and export speed both depend on the device.</p>
