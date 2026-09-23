@@ -1,17 +1,17 @@
-name: Pages
+name: Site
 
-# Build and deploy the Sticker Maker marketing site to GitHub Pages as a PROJECT
-# page under the ideaconnect org's apex custom domain, served at
-# https://idct.tech/sticker-maker/. The whole Pages deployment is the Jekyll site
-# in website/ — there are no docs to publish alongside it, and this app has no
-# public source repository. A repo has a single Pages site, so this is the only
-# workflow that owns it.
+# Builds the Jekyll site in website/ and publishes it to Cloudflare, served at
+# https://idct.tech/sticker-maker/ by a Worker that is nothing but static assets, bound to
+# that path by the routes in website/wrangler.jsonc. The rest of idct.tech is the org's apex
+# site (repo: ideaconnect.github.io), still on GitHub Pages, and every path outside
+# /sticker-maker/ carries on through to it untouched. There are no docs to publish alongside
+# it, and this app has no public source repository.
 #
-# One-time setup: Settings → Pages → Source: GitHub Actions, and LEAVE the
-# custom-domain field BLANK. The project inherits the org's apex domain
-# (idct.tech, configured on the ideaconnect.github.io page repo) and serves at
-# the /sticker-maker/ path; this repo carries no CNAME (a project CNAME would
-# claim the domain root and conflict with the org page).
+# One-time setup (already done on this repo): the CLOUDFLARE_AUTHENTICATION_TOKEN secret, an
+# API token that can edit Workers scripts and Workers routes on this account and the idct.tech
+# zone, and CLOUDFLARE_ACCOUNT_ID. Nothing is set up in the Cloudflare dashboard: the first
+# deploy creates the Worker and its routes. Cloudflare's own Git integration is deliberately
+# not used — it would deploy on every push whether or not the checks below passed.
 
 on:
   push:
@@ -19,6 +19,8 @@ on:
     paths:
       - website/**
       - .github/workflows/pages.yml
+  # Runs on PRs too, so a broken site is caught before it reaches the domain.
+  # Nothing is uploaded or deployed from a PR — see the `if` guards below.
   pull_request:
     paths:
       - website/**
@@ -27,12 +29,10 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
-# Allow one concurrent deployment; don't cancel an in-progress publish.
+# One deployment at a time, and never cancel a publish that is already running.
 concurrency:
-  group: pages
+  group: site
   cancel-in-progress: false
 
 jobs:
@@ -50,34 +50,97 @@ jobs:
         working-directory: website
         # JEKYLL_ENV=production gates the Google Analytics include (_includes/
         # analytics.html) so gtag is emitted only on the deployed site, never in
-        # local development builds. That include is gated on a non-empty
-        # site.ga_id as well, so today it emits nothing either way.
+        # local development builds.
         # --baseurl must match _config.yml's baseurl (/sticker-maker).
         env:
           JEKYLL_ENV: production
-        run: bundle exec jekyll build --baseurl "/sticker-maker" --destination "$GITHUB_WORKSPACE/_site"
+        run: bundle exec jekyll build --baseurl "/sticker-maker"
 
-      # A project page under the org's apex domain must NOT ship a CNAME — one
-      # would claim idct.tech at its root and conflict with the org page. Assert
-      # the build produced none (a stray website/CNAME would reintroduce a
-      # subdomain deploy).
-      - name: Verify no project CNAME
-        run: test ! -f _site/CNAME
+      # These are the addresses the outside world already holds: the app opens the privacy
+      # page, the Play listing links privacy and the site, and Web3Forms sends everyone who
+      # submits the contact form to the thank-you page. Pretty permalinks are what put each
+      # one at <name>/index.html; a page renamed or a permalink dropped would 404 one of them
+      # with nothing else to notice, so assert the structure instead of finding out later.
+      - name: Verify every published URL is still there
+        working-directory: website/_site
+        run: |
+          missing=0
+          for f in \
+            index.html \
+            features/index.html \
+            privacy/index.html \
+            terms/index.html \
+            contact/index.html \
+            contact/thank-you/index.html \
+            404.html \
+            robots.txt \
+            sitemap.xml
+          do
+            if [ ! -f "$f" ]; then echo "::error::missing _site/$f"; missing=1; fi
+          done
+          exit $missing
 
-      # PRs build (so a broken site fails review) but never publish.
-      - name: Upload Pages artifact
+      # The route keeps the /sticker-maker/ prefix on every request, and baseurl bakes that
+      # prefix into every link Jekyll writes, so the tree Cloudflare serves has _site/ one
+      # level down.
+      - name: Assemble the tree Cloudflare serves
         if: github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: _site
+        working-directory: website
+        run: |
+          mkdir _deploy
+          cp -r _site _deploy/sticker-maker
 
-  deploy:
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v5
+      # Wrangler is pinned so a release of it cannot change what a deploy does between two
+      # pushes that changed nothing here.
+      - name: Deploy to Cloudflare
+        if: github.ref == 'refs/heads/main'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_AUTHENTICATION_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4.136.3'
+          workingDirectory: website
+          command: deploy
+
+      # A green deploy only means Cloudflare accepted the upload. This asks the live addresses:
+      # each has to come from Cloudflare rather than GitHub, which is what a missing or
+      # mis-typed route looks like, and has to be byte-for-byte the page this run built, which
+      # is what a deploy that went somewhere else looks like. The zone rewrites email addresses
+      # in HTML it proxies from GitHub, but not in what the Worker serves, so a difference is
+      # real either way. Retried, because a new route takes a few seconds to reach every edge.
+      #
+      # The privacy URL is requested exactly as lib/features/about/about_data.dart spells it,
+      # without the trailing slash, so the redirect onto privacy/ is checked with it.
+      #
+      # Each response is captured before it is tested, not piped into grep: without pipefail a
+      # curl that got nothing would hand grep an empty string, every "is it wrong" test would
+      # come back no, and a site that is down would pass.
+      - name: Verify the live site is the one just deployed
+        if: github.ref == 'refs/heads/main'
+        working-directory: website
+        run: |
+          check() {
+            headers=$(curl -fsSIL "$1" || true)
+            curl -fsSL "$1" -o live.html || rm -f live.html
+            if [ -z "$headers" ] || [ ! -s live.html ]; then
+              echo "$1 did not answer"
+            elif grep -qi '^x-github-request-id:' <<<"$headers"; then
+              echo "$1 is still served by GitHub"
+            elif ! cmp -s live.html "_site/$2"; then
+              echo "$1 is not the $2 this run built"
+            else
+              return 0
+            fi
+            return 1
+          }
+          for attempt in 1 2 3 4 5 6; do
+            if check https://idct.tech/sticker-maker/ index.html &&
+               check https://idct.tech/sticker-maker/privacy privacy/index.html; then
+              echo 'https://idct.tech/sticker-maker/ is served by Cloudflare, from this build'
+              exit 0
+            fi
+            echo "attempt $attempt failed"
+            sleep 10
+          done
+          echo "::error::https://idct.tech/sticker-maker/ is not serving this deploy"
+          exit 1

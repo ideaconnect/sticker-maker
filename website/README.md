@@ -2,12 +2,12 @@
 
 The public website for the **Sticker Maker** app - landing page, features,
 privacy, terms, and a contact form. It is a self-contained **Jekyll** site
-living in this subfolder so it deploys to GitHub Pages independently of the app
+living in this subfolder so it deploys to Cloudflare independently of the app
 source.
 
 **Custom layouts + hand-written CSS only** - no gem theme, no plugins, no CDN,
-no webfont service. It builds on GitHub Pages' stock Jekyll with no extra
-configuration, and every asset it loads comes from this folder.
+no webfont service. It builds on stock Jekyll with no extra configuration, and
+every asset it loads comes from this folder.
 
 > **This app is free and closed source.** There is no public repository, no
 > issue tracker and no chat community, so nothing on the site links to one and
@@ -61,8 +61,8 @@ bundle exec jekyll serve --baseurl ""     # http://localhost:4000/
 ```
 
 **Why `--baseurl ""`.** `_config.yml` sets `baseurl: "/sticker-maker"` because
-the deployed site is a GitHub Pages *project* page served under the org's apex
-domain. Locally there is no such prefix, so without the override every
+the deployed site is a *path* on the org's apex domain, not a domain of its
+own. Locally there is no such prefix, so without the override every
 `relative_url` link would point at `http://localhost:4000/sticker-maker/…` and
 404. Passing an empty baseurl serves the site at the root instead. Nothing in
 the site hard-codes a path - links and assets all go through
@@ -77,7 +77,8 @@ To produce the exact bytes CI produces:
 JEKYLL_ENV=production bundle exec jekyll build --baseurl "/sticker-maker"
 ```
 
-(`_site/`, `.jekyll-cache/`, `vendor/` and `Gemfile.lock` are gitignored.)
+(`_site/`, `_deploy/`, `.jekyll-cache/`, `.wrangler/`, `vendor/` and
+`Gemfile.lock` are gitignored.)
 
 ## Deploy
 
@@ -85,19 +86,34 @@ JEKYLL_ENV=production bundle exec jekyll build --baseurl "/sticker-maker"
 PR touching `website/**` (validation only - PRs never publish) and deploys on
 push to `main`.
 
-The site is a GitHub Pages **project page** under the `ideaconnect` org's apex
-custom domain, served at **<https://idct.tech/sticker-maker/>**:
+The site is a **path** on the `ideaconnect` org's domain, not a site of its
+own, served at **<https://idct.tech/sticker-maker/>**. A Cloudflare Worker
+holding nothing but the built site answers `idct.tech/sticker-maker/*`
+([`wrangler.jsonc`](wrangler.jsonc)); every other path on `idct.tech` goes to
+the org's apex site (the `ideaconnect.github.io` repo, still on GitHub Pages).
 
 - `url: "https://idct.tech"` + `baseurl: "/sticker-maker"` in `_config.yml`
-- the workflow passes the matching `--baseurl "/sticker-maker"` - **keep the two
-  in sync**
-- **no `CNAME` file.** The apex belongs to the org's `ideaconnect.github.io`
-  page repo; a project `CNAME` would claim `idct.tech` at its root and fight
-  with it. The workflow asserts `_site/CNAME` does not exist, so an accidental
-  one fails the build rather than breaking the org page.
+- the workflow passes the matching `--baseurl "/sticker-maker"`, and the Worker's
+  routes claim the same path - **keep all three in sync**
+- the workflow copies `_site/` to `_deploy/sticker-maker/` before uploading it,
+  because the route keeps the `/sticker-maker/` prefix on every request
+- a missing URL gets `404.html` with a real 404 status, at any depth. That only
+  works because every link in it goes through `relative_url`
+- `/sticker-maker/privacy` (no slash) redirects to `/sticker-maker/privacy/`;
+  the app links the slashless form, so this redirect matters too
 
-**One-time setup:** *Settings → Pages → Source: **GitHub Actions***, and leave
-the custom-domain field **blank** (the project inherits the org domain).
+The workflow fails the build if any of the published URLs (home, features,
+privacy, terms, contact, the contact form's thank-you page) goes missing,
+because the app, the Play listing and Web3Forms all hold those addresses.
+After deploying, it fetches the live home and privacy pages and checks they
+came from Cloudflare and match this build byte for byte.
+
+**One-time setup (already done):** the `CLOUDFLARE_AUTHENTICATION_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` repository secrets. The token needs permission to edit
+Workers scripts and Workers routes on the `idct.tech` zone. Nothing is set up in
+the Cloudflare dashboard: the first deploy creates the Worker and its routes.
+Deploy only through the workflow - not with `wrangler deploy` by hand, and not
+with Cloudflare's Git integration, which would skip the checks.
 
 ## Layout
 

@@ -3,3 +3,8 @@ _site/
 .jekyll-metadata
 vendor/
 Gemfile.lock
+# The tree the Cloudflare deploy uploads (_site/ copied one level down), and
+# Wrangler's local state. Assembled by .github/workflows/pages.yml; anything
+# here locally is a leftover.
+_deploy/
+.wrangler/

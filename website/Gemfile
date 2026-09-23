@@ -2,7 +2,7 @@ source "https://rubygems.org"
 
 # The Sticker Maker website is a self-contained Jekyll site (custom layouts,
 # hand-written CSS, self-hosted fonts, no gem theme and no plugins) so it builds
-# on GitHub Pages' stock Jekyll without any allow-listing.
+# on stock Jekyll with nothing else to install.
 gem "jekyll", "~> 4.3"
 
 # Windows / JRuby timezone data, harmless elsewhere.
