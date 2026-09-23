@@ -1,0 +1,35 @@
+// The built site (_site/), served at https://idct.tech/sticker-maker/ by a Cloudflare Worker
+// that is nothing but static assets. Deployed by .github/workflows/pages.yml and never any
+// other way — not by hand, and not by Cloudflare's own Git integration, which would publish
+// on every push whether or not the build and its checks passed.
+//
+// It lives in website/ next to the Jekyll source rather than at the repo root, which belongs
+// to the Flutter app. _config.yml excludes it from _site, so it is never published.
+{
+  "name": "sticker-maker-site",
+  "compatibility_date": "2026-09-23",
+
+  // Routes, not a custom domain. The site is a path on idct.tech, and the root of that domain
+  // belongs to the org's apex site (repo: ideaconnect.github.io). A custom domain would claim
+  // the whole hostname; these claim /sticker-maker and everything under it, and every other
+  // path on idct.tech carries on through to GitHub untouched.
+  "routes": [
+    { "pattern": "idct.tech/sticker-maker", "zone_name": "idct.tech" },
+    { "pattern": "idct.tech/sticker-maker/*", "zone_name": "idct.tech" }
+  ],
+
+  // No second copy of the site on a workers.dev address for anyone to find and link to.
+  "workers_dev": false,
+  "preview_urls": false,
+
+  "assets": {
+    // The workflow copies _site/ to _deploy/sticker-maker/: the route keeps the
+    // /sticker-maker/ prefix on every request, and baseurl bakes that prefix into every link
+    // Jekyll writes.
+    "directory": "./_deploy",
+    // The nearest 404.html, with a real 404 status. There is one, at /sticker-maker/404.html,
+    // so it answers for every missing URL beneath /sticker-maker/ at any depth — which works
+    // only because relative_url makes every link inside it root-absolute.
+    "not_found_handling": "404-page"
+  }
+}

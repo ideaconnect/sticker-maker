@@ -11,7 +11,7 @@ description: >-
   The website loads analytics only after explicit consent.
 ---
 
-**Last updated** - app policy: **18 July 2026** · website section: **20 July 2026**
+**Last updated** - app policy: **18 July 2026** · website section: **23 September 2026**
 
 <div class="legal-toc">
   <p class="legal-toc-title">On this page</p>
@@ -131,11 +131,11 @@ Everything above is about the app. This section is only about
 
 The site is a **static** site: plain HTML, CSS, two small JavaScript files (one
 for scroll effects, one for the cookie banner), and self-hosted fonts. There is no database, no login, and no server-side code of ours.
-It is hosted on **GitHub Pages**. GitHub serves the files and, like any web host,
+It is hosted on **Cloudflare**. Cloudflare serves the files from its network and, like any web host,
 processes the request data that reaching a server necessarily involves (IP address,
 time, requested URL, user agent) for delivery, security, and abuse prevention. See
-the [GitHub Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
-We have no access to those logs.
+the [Cloudflare Privacy Policy](https://www.cloudflare.com/privacypolicy/).
+We keep no access logs of our own.
 
 ### Analytics, and what is running today
 

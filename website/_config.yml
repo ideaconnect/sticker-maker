@@ -1,6 +1,6 @@
 # Jekyll configuration for the Sticker Maker marketing website.
 # Self-contained: custom layouts + CSS, self-hosted fonts, no gem theme and no
-# plugins - so it builds on GitHub Pages' stock Jekyll exactly as-is.
+# plugins - so it builds on stock Jekyll exactly as-is.
 #
 # Sticker Maker is a PAID, CLOSED-SOURCE app: there is deliberately no `repo:`,
 # no `discord:` and no `sponsor:` key here, and nothing on the site links to a
@@ -20,18 +20,20 @@ author: Bartosz Pachołek
 copyright: "IDCT · Bartosz Pachołek"
 author_url: "https://idct.tech"
 
-# Deployed as a GitHub Pages PROJECT page under the ideaconnect org's apex custom
-# domain, so the site lives at https://idct.tech/sticker-maker/ - url is the apex
-# and baseurl is the project path. The apex domain is owned by the org's
-# ideaconnect.github.io page repo; this repo carries NO CNAME (a project CNAME
-# would try to claim the domain at its root and conflict with the org page).
-# Internal links use relative_url/absolute_url, so baseurl must stay in sync with
-# the --baseurl passed by .github/workflows/pages.yml.
+# The site is a PATH on the org's domain, not a site of its own: it lives at
+# https://idct.tech/sticker-maker/ - url is the apex and baseurl is the path. A
+# Cloudflare Worker holding nothing but the built site answers /sticker-maker/*
+# (wrangler.jsonc), and every other path on idct.tech goes to the org's apex site
+# (the ideaconnect.github.io repo, on GitHub Pages). Internal links use
+# relative_url/absolute_url, so baseurl must stay in sync with the --baseurl
+# passed by .github/workflows/pages.yml and with the routes in wrangler.jsonc.
 url: "https://idct.tech"
 baseurl: "/sticker-maker"
 
 # Pretty URLs: each page builds to <name>/index.html so the nav's "/features/",
-# "/contact/", … links resolve (GitHub Pages doesn't map "/x/" to "x.html").
+# "/contact/", … links resolve. These are also the URLs the app, the Play listing
+# and the contact form's redirect already point at, so they must not change -
+# the deploy workflow fails the build if one of them goes missing.
 permalink: pretty
 
 # --- Stores -----------------------------------------------------------------
@@ -70,6 +72,9 @@ exclude:
   - README.md
   - vendor
   - tools
+  # The Cloudflare Worker's config: deploy plumbing, not a page. (_deploy/, the
+  # tree it uploads, starts with an underscore, so Jekyll skips it already.)
+  - wrangler.jsonc
   # Provenance notes for the image set. `README.md` above only matches the one
   # at the source root, so this nested authoring doc has to be named explicitly
   # or it is published at /assets/img/README.md (it details internal repo paths
